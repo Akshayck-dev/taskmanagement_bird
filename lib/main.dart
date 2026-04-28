@@ -17,10 +17,20 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print("Handling a background message: ${message.messageId}");
 }
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(); 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
+  // Add dummy users for testing purposes
+  try {
+    await DatabaseService().addDummyUsers();
+  } catch (e) {
+    print('Failed to add dummy users: $e');
+  }
+  
   runApp(const TaskFlowApp());
 }
 
@@ -44,6 +54,7 @@ class TaskFlowApp extends StatelessWidget {
             title: 'TaskFlow',
             debugShowCheckedModeBanner: false,
             themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            navigatorKey: navigatorKey,
             theme: ThemeData(
               colorScheme: ColorScheme.fromSeed(
                 seedColor: const Color(0xFF6C63FF),
@@ -55,13 +66,20 @@ class TaskFlowApp extends StatelessWidget {
               scaffoldBackgroundColor: const Color(0xFFF7F8FA),
             ),
             darkTheme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF6C63FF),
-                primary: const Color(0xFF6C63FF),
-                brightness: Brightness.dark,
+              brightness: Brightness.dark,
+              scaffoldBackgroundColor: Colors.black,
+              colorScheme: const ColorScheme.dark(
+                primary: Color(0xFF6C63FF),
+                secondary: Color(0xFF3B33FF),
+                surface: Color(0xFF121212),
+                background: Colors.black,
               ),
+              cardColor: const Color(0xFF1E1E1E),
               useMaterial3: true,
-              textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+              textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).apply(
+                bodyColor: Colors.white,
+                displayColor: Colors.white,
+              ),
             ),
             initialRoute: '/',
             routes: {

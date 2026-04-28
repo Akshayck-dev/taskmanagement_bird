@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/app_models.dart';
 import '../services/firebase_service.dart';
@@ -9,6 +10,12 @@ import '../services/fcm_v1_service.dart';
 import '../widgets/app_widgets.dart';
 import 'team_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'dart:ui';
+import 'dart:io';
+import 'notification_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +26,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   final List<Widget> _screens = [
     const TasksView(), // Home
@@ -31,39 +43,74 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final user = Provider.of<User?>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     if (user == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
+      extendBody: true,
+      resizeToAvoidBottomInset: false,
       body: _screens[_selectedIndex],
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: Container(
-        height: 65,
-        width: 65,
-        margin: const EdgeInsets.only(top: 30),
+        height: 64,
+        width: 64,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6C63FF), Color(0xFF3B33FF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6C63FF).withOpacity(0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
         child: FloatingActionButton(
           onPressed: () => _showCreateTaskSheet(context, user.uid),
-          backgroundColor: const Color(0xFF6C63FF),
-          foregroundColor: Colors.white,
-          elevation: 4,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
           shape: const CircleBorder(),
-          child: const Icon(Icons.add, size: 35),
+          child: const Icon(Icons.add_rounded, size: 36, color: Colors.white),
         ),
       ),
-      bottomNavigationBar: BottomAppBar(
-        height: 80,
-        padding: EdgeInsets.zero,
-        notchMargin: 8,
-        clipBehavior: Clip.antiAlias,
-        shape: const CircularNotchedRectangle(),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _navItem(Icons.home_outlined, Icons.home, 'Home', 0),
-            _navItem(Icons.assignment_turned_in_outlined, Icons.assignment_turned_in, 'My Tasks', 1),
-            const SizedBox(width: 40), // Space for FAB
-            _navItem(Icons.people_outline, Icons.people, 'Team', 3),
-            _navItem(Icons.person_outline, Icons.person, 'Profile', 4),
-          ],
+      bottomNavigationBar: Container(
+        height: 90,
+        decoration: BoxDecoration(
+          color: isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.7),
+          border: Border(
+            top: BorderSide(
+              color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: BottomAppBar(
+              height: 90,
+              color: Colors.transparent,
+              elevation: 0,
+              padding: EdgeInsets.zero,
+              notchMargin: 10,
+              shape: const CircularNotchedRectangle(),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _navItem(Icons.grid_view_rounded, Icons.grid_view_rounded, 'Home', 0),
+                  _navItem(Icons.task_alt_rounded, Icons.task_alt_rounded, 'Tasks', 1),
+                  const SizedBox(width: 70), // Increased space for FAB notch
+                  _navItem(Icons.group_rounded, Icons.group_rounded, 'Team', 3),
+                  _navItem(Icons.person_rounded, Icons.person_rounded, 'Profile', 4),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -71,27 +118,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _navItem(IconData icon, IconData activeIcon, String label, int index) {
     final isSelected = _selectedIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isSelected ? activeIcon : icon,
-            color: isSelected ? const Color(0xFF6C63FF) : Colors.grey,
-            size: 26,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedIndex = index),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center, // Center vertically
+            children: [
+              Icon(
+                isSelected ? activeIcon : icon,
+                color: isSelected ? const Color(0xFF6C63FF) : Colors.grey[500],
+                size: 24, // Slightly smaller icons for better balance
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: isSelected ? const Color(0xFF6C63FF) : Colors.grey[500],
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              AnimatedOpacity(
+                opacity: isSelected ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  width: 4,
+                  height: 4,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF6C63FF),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: isSelected ? const Color(0xFF6C63FF) : Colors.grey,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -114,104 +182,300 @@ class TasksView extends StatelessWidget {
     final user = Provider.of<User?>(context);
     if (user == null) return const SizedBox();
     final dbService = DatabaseService();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Hi, ${user.displayName?.split(' ')[0] ?? 'User'} 👋',
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(Provider.of<ThemeProvider>(context).isDarkMode ? Icons.light_mode : Icons.dark_mode),
-                      onPressed: () => Provider.of<ThemeProvider>(context, listen: false).toggleTheme(),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => Provider.of<AuthService>(context, listen: false).signOut(),
-                      child: CircleAvatar(
-                        backgroundImage: NetworkImage(user.photoURL ?? ''),
+            // Header Section
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hi, ${user.displayName?.split(' ')[0] ?? 'User'} 👋',
+                        style: GoogleFonts.inter(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            StreamBuilder<List<TaskModel>>(
-              stream: dbService.getTasks(user.uid),
-              builder: (context, snapshot) {
-                final tasks = snapshot.data ?? [];
-                final pendingCount = tasks.where((t) => !t.isDone).length;
-                final completedCount = tasks.where((t) => t.isDone).length;
-
-                return Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: StatCard(
-                            title: 'Pending',
-                            count: pendingCount.toString(),
-                            color: const Color(0xFF6C63FF).withOpacity(0.1),
-                            icon: Icons.assignment,
-                            iconColor: const Color(0xFF6C63FF),
-                          ),
+                      Text(
+                        DateFormat('EEEE, MMM d').format(DateTime.now()),
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[500],
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: StatCard(
-                            title: 'Completed',
-                            count: completedCount.toString(),
-                            color: Colors.green.withOpacity(0.1),
-                            icon: Icons.check_circle,
-                            iconColor: Colors.green,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('All Tasks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: MediaQuery.of(context).size.height * 0.45,
-                      child: ListView.builder(
-                        itemCount: tasks.length,
-                        itemBuilder: (context, index) {
-                          final task = tasks[index];
-                          final isOverdue = task.deadline.isBefore(DateTime.now());
-                          return TaskItem(
-                            title: task.title,
-                            subtitle: '${DateFormat('dd MMM yyyy').format(task.deadline)}',
-                            isDone: task.isDone,
-                            isOverdue: isOverdue,
-                            photoUrl: 'https://i.pravatar.cc/150?u=${task.assignedTo}',
-                            onToggle: () => dbService.updateTaskStatus(task.id, !task.isDone, taskTitle: task.title, assignedBy: task.assignedBy),
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task)),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      _actionIcon(
+                        context, 
+                        Icon(isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, size: 20),
+                        () => Provider.of<ThemeProvider>(context, listen: false).toggleTheme(),
+                      ),
+                      const SizedBox(width: 12),
+                      StreamBuilder<List<NotificationModel>>(
+                        stream: dbService.getNotifications(user.uid),
+                        builder: (context, snapshot) {
+                          final unreadCount = snapshot.hasData ? snapshot.data!.where((n) => !n.isRead).length : 0;
+                          return _actionIcon(
+                            context, 
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                const Icon(Icons.notifications_none_rounded, size: 24),
+                                if (unreadCount > 0)
+                                  Positioned(
+                                    right: -2,
+                                    top: -2,
+                                    child: Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                                    ),
+                                  ),
+                              ],
                             ),
+                            () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen())),
                           );
                         },
                       ),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(24, 10, 24, MediaQuery.of(context).padding.bottom + 100),
+                child: StreamBuilder<List<TaskModel>>(
+                  stream: dbService.getTasks(user.uid),
+                  builder: (context, snapshot) {
+                    final allTasks = snapshot.data ?? [];
+                    final tasks = allTasks.where((t) => t.assignedTo == user.uid).toList();
+                    
+                    if (tasks.isEmpty) return _emptyState();
+
+                    final pendingTasks = tasks.where((t) => !t.isDone).toList();
+                    final completedTasks = tasks.where((t) => t.isDone).toList();
+
+                    if (pendingTasks.isEmpty && tasks.isNotEmpty) {
+                      return _allCompletedState();
+                    }
+
+                    final now = DateTime.now();
+                    final today = DateTime(now.year, now.month, now.day);
+                    
+                    final todayTasks = pendingTasks.where((t) => _isSameDay(t.deadline, today)).toList();
+                    final upcomingTasks = pendingTasks.where((t) => t.deadline.isAfter(today.add(const Duration(days: 1)))).toList();
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Stats Section
+                        Row(
+                          children: [
+                            Expanded(
+                              child: StatCard(
+                                title: 'Active Tasks',
+                                count: pendingTasks.length.toString(),
+                                gradientColors: const [Color(0xFF6C63FF), Color(0xFF3B33FF)],
+                                icon: Icons.pending_actions_rounded,
+                              ),
+                            ),
+                            // We can add another useful stat here, like "Due Today"
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: StatCard(
+                                title: 'Due Today',
+                                count: todayTasks.length.toString(),
+                                gradientColors: const [Color(0xFFF2994A), Color(0xFFF2C94C)],
+                                icon: Icons.calendar_today_rounded,
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 32),
+                        Text(
+                          'Your Tasks',
+                          style: GoogleFonts.inter(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        if (todayTasks.isNotEmpty) ...[
+                          _sectionHeader('Today'),
+                          ...todayTasks.map((t) => _buildTaskItem(context, t, dbService)),
+                        ],
+
+                        if (upcomingTasks.isNotEmpty) ...[
+                          _sectionHeader('Upcoming'),
+                          ...upcomingTasks.map((t) => _buildTaskItem(context, t, dbService)),
+                        ],
+                        
+                        // Remaining pending tasks that are neither today nor upcoming (overdue etc)
+                        final otherTasks = pendingTasks.where((t) => !todayTasks.contains(t) && !upcomingTasks.contains(t)).toList();
+                        if (otherTasks.isNotEmpty) ...[
+                          _sectionHeader('Other Pending'),
+                          ...otherTasks.map((t) => _buildTaskItem(context, t, dbService)),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionIcon(BuildContext context, Widget icon, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03)),
+        ),
+        child: icon,
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
+      child: Text(
+        title,
+        style: GoogleFonts.inter(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey[500],
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskItem(BuildContext context, TaskModel task, DatabaseService db) {
+    return TweenAnimationBuilder(
+      duration: const Duration(milliseconds: 400),
+      tween: Tween<double>(begin: 0, end: 1),
+      builder: (context, double value, child) {
+        return Transform.translate(
+          offset: Offset(0, 20 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: child,
+          ),
+        );
+      },
+      child: TaskItem(
+        id: task.id,
+        title: task.title,
+        subtitle: DateFormat('MMM d, yyyy').format(task.deadline),
+        isDone: task.isDone,
+        isOverdue: task.deadline.isBefore(DateTime.now()) && !task.isDone,
+        photoUrl: 'https://ui-avatars.com/api/?name=${task.assignedTo}&background=random',
+        category: task.category,
+        priority: task.priority,
+        canToggle: true,
+        onToggle: () {
+          final newStatus = !task.isDone;
+          db.updateTaskStatus(task.id, newStatus, taskTitle: task.title, assignedBy: task.assignedBy);
+          HapticFeedback.mediumImpact();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newStatus ? 'Task completed! 🎉' : 'Task reopened 🔄'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        },
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task))),
+      ),
+    );
+  }
+
+  bool _isSameDay(DateTime d1, DateTime d2) {
+    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 100),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6C63FF).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.task_rounded, size: 64, color: Color(0xFF6C63FF)),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'No tasks found',
+              style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tap the + button to create your first task!',
+              style: GoogleFonts.inter(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _allCompletedState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 100),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00B09B).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle_outline_rounded, size: 64, color: Color(0xFF00B09B)),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'All are completed!',
+              style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Great job! You have cleared all your tasks.',
+              style: GoogleFonts.inter(color: Colors.grey),
             ),
           ],
         ),
@@ -232,85 +496,278 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
   String? _selectedAssignee;
-  DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
+  String _selectedPriority = 'Medium';
+  DateTime _selectedDeadline = DateTime.now().add(const Duration(days: 1)).copyWith(hour: 18, minute: 0); // Default to tomorrow 6 PM
+  DateTime _selectedDate = DateTime.now();
+  bool _showMentions = false;
+  bool _isLoading = false;
+  List<AppUser> _allUsers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedAssignee = widget.currentUserId; // Default to self
+    _descController.addListener(_onDescChanged);
+  }
+
+  void _onDescChanged() {
+    final text = _descController.text;
+    final cursorPosition = _descController.selection.baseOffset;
+    if (cursorPosition > 0 && text.substring(0, cursorPosition).endsWith('@')) {
+      setState(() => _showMentions = true);
+    } else {
+      if (_showMentions) setState(() => _showMentions = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final dbService = DatabaseService();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 20, right: 20),
-      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24, 
+        top: 20, 
+        left: 24, 
+        right: 24,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          const Text('Create Task', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _titleController,
-            decoration: InputDecoration(hintText: 'Task Title', filled: true, fillColor: Theme.of(context).colorScheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _descController,
-            maxLines: 3,
-            decoration: InputDecoration(hintText: 'Description', filled: true, fillColor: Theme.of(context).colorScheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-          ),
-          const SizedBox(height: 16),
-          StreamBuilder<List<AppUser>>(
-            stream: dbService.getAllUsers(),
-            builder: (context, snapshot) {
-              final users = snapshot.data ?? [];
-              return DropdownButtonFormField<String>(
-                value: _selectedAssignee,
-                decoration: InputDecoration(filled: true, fillColor: Theme.of(context).colorScheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), prefixIcon: const Icon(Icons.person_outline)),
-                hint: const Text('Assign To'),
-                items: users.map((u) => DropdownMenuItem(value: u.uid, child: Text(u.name))).toList(),
-                onChanged: (val) => setState(() => _selectedAssignee = val),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          InkWell(
-            onTap: () async {
-              final picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
-              if (picked != null) setState(() => _selectedDate = picked);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(12)),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today_outlined, size: 20, color: Colors.grey),
-                  const SizedBox(width: 12),
-                  Text(DateFormat('dd MMM yyyy').format(_selectedDate), style: const TextStyle(fontSize: 16)),
-                ],
-              ),
+          SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: Colors.grey[isDark ? 800 : 300], borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'New Task',
+                  style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 24),
+                _buildFieldLabel('Title'),
+                TextField(
+                  controller: _titleController,
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                  decoration: _inputDecoration('Task title...'),
+                ),
+                const SizedBox(height: 20),
+                _buildFieldLabel('Description'),
+                TextField(
+                  controller: _descController,
+                  maxLines: 3,
+                  style: GoogleFonts.inter(fontSize: 14),
+                  decoration: _inputDecoration('Type @ to mention and assign...'),
+                ),
+                const SizedBox(height: 20),
+                const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: (_selectedAssignee == widget.currentUserId ? Colors.orange : const Color(0xFF6C63FF)).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _selectedAssignee == widget.currentUserId ? Icons.sticky_note_2_outlined : Icons.person_outline_rounded, 
+                          size: 14, 
+                          color: _selectedAssignee == widget.currentUserId ? Colors.orange : const Color(0xFF6C63FF)
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _selectedAssignee == widget.currentUserId 
+                            ? 'Personal Note' 
+                            : 'Assigned to: ${_allUsers.firstWhere((u) => u.uid == _selectedAssignee, orElse: () => AppUser(uid: '', name: 'Someone', email: '', photoUrl: '')).name}',
+                          style: GoogleFonts.inter(
+                            fontSize: 12, 
+                            fontWeight: FontWeight.bold, 
+                            color: _selectedAssignee == widget.currentUserId ? Colors.orange : const Color(0xFF6C63FF)
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                // StreamBuilder is still needed to fetch users for mentions
+                StreamBuilder<List<AppUser>>(
+                  stream: dbService.getAllUsers(),
+                  builder: (context, snapshot) {
+                    _allUsers = snapshot.data ?? [];
+                    return const SizedBox();
+                  },
+                ),
+                const SizedBox(height: 20),
+                _buildFieldLabel('Priority'),
+                DropdownButtonFormField<String>(
+                  value: _selectedPriority,
+                  dropdownColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+                  decoration: _inputDecoration(''),
+                  items: ['Low', 'Medium', 'High'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+                   onChanged: (val) => setState(() => _selectedPriority = val!),
+                ),
+                const SizedBox(height: 20),
+                _buildFieldLabel('Deadline'),
+                GestureDetector(
+                  onTap: () async {
+                    final pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDeadline,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (pickedDate != null && mounted) {
+                      setState(() {
+                        // Keep the time at 6:00 PM (End of business day)
+                        _selectedDeadline = DateTime(
+                          pickedDate.year, 
+                          pickedDate.month, 
+                          pickedDate.day, 
+                          18, 0,
+                        );
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_month_rounded, size: 20, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                        const SizedBox(width: 12),
+                        Text(
+                          DateFormat('EEEE, MMM d, yyyy - 6:00 PM').format(_selectedDeadline),
+                          style: GoogleFonts.inter(
+                            color: isDark ? Colors.white : Colors.black87,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                PrimaryButton(
+                  text: 'Create Task',
+                  isLoading: _isLoading,
+                  onPressed: () async {
+                    if (_titleController.text.isNotEmpty && _selectedAssignee != null) {
+                      setState(() => _isLoading = true);
+                      try {
+                        await dbService.createTask(TaskModel(
+                          id: '',
+                          title: _titleController.text,
+                          description: _descController.text,
+                          assignedTo: _selectedAssignee!,
+                          assignedBy: widget.currentUserId,
+                          isDone: false,
+                          deadline: _selectedDeadline,
+                          createdAt: DateTime.now(),
+                          category: 'General',
+                          priority: _selectedPriority,
+                        ));
+                        if (mounted) Navigator.pop(context);
+                      } catch (e) {
+                        if (mounted) {
+                          setState(() => _isLoading = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error creating task: $e')),
+                          );
+                        }
+                      }
+                    } else if (_selectedAssignee == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please select an assignee')),
+                      );
+                    }
+                  },
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 32),
-          PrimaryButton(
-            text: 'Create Task',
-            onPressed: () async {
-              if (_titleController.text.isNotEmpty && _selectedAssignee != null) {
-                await dbService.createTask(TaskModel(
-                  id: '',
-                  title: _titleController.text,
-                  description: _descController.text,
-                  assignedTo: _selectedAssignee!,
-                  assignedBy: widget.currentUserId,
-                  isDone: false,
-                  deadline: _selectedDate,
-                  createdAt: DateTime.now(),
-                ));
-                Navigator.pop(context);
-              }
-            },
-          ),
-          const SizedBox(height: 24),
+          if (_showMentions && _allUsers.isNotEmpty)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 250, // Above the assign field
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 5))],
+                  border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05)),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: _allUsers.length,
+                  itemBuilder: (context, index) {
+                    final u = _allUsers[index];
+                    return ListTile(
+                      leading: CircleAvatar(radius: 14, backgroundImage: NetworkImage(u.photoUrl)),
+                      title: Text(u.name, style: GoogleFonts.inter(fontSize: 14)),
+                      onTap: () {
+                        final text = _descController.text;
+                        final lastAtIndex = text.lastIndexOf('@');
+                        setState(() {
+                          _descController.text = text.substring(0, lastAtIndex + 1) + u.name + ' ';
+                          _descController.selection = TextSelection.fromPosition(TextPosition(offset: _descController.text.length));
+                          _selectedAssignee = u.uid; // Auto-assign!
+                          _showMentions = false;
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFieldLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        label,
+        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.grey[400] : Colors.grey[700]),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.03),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
     );
   }
 }
@@ -327,6 +784,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final TextEditingController _commentController = TextEditingController();
   late TaskModel currentTask;
   bool _showMentions = false;
+  bool _isSending = false;
   List<AppUser> _allUsers = [];
 
   @override
@@ -357,48 +815,145 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Widget build(BuildContext context) {
     final user = Provider.of<User?>(context);
     final dbService = DatabaseService();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Task Detail'), elevation: 0),
-      body: Stack(
+      backgroundColor: isDark ? Colors.black : Colors.grey[50],
+      appBar: AppBar(
+        title: Text('Task Detail', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+      ),
+      body: Column(
         children: [
-          Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24.0),
+          Expanded(
+            child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(currentTask.title, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 16),
-                      Text(currentTask.description, style: TextStyle(fontSize: 16, color: Colors.grey[700], height: 1.5)),
-                      const SizedBox(height: 32),
-                      _DetailItem(label: 'Due Date', value: DateFormat('dd MMM yyyy').format(currentTask.deadline)),
-                      const SizedBox(height: 16),
-                      _DetailItem(label: 'Created At', value: DateFormat('dd MMM yyyy').format(currentTask.createdAt)),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 10),
+                      // Priority Badge
                       Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(16)),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Mark as Done', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                            Switch(
-                              value: currentTask.isDone, 
-                              onChanged: (val) {
-                                dbService.updateTaskStatus(currentTask.id, val, taskTitle: currentTask.title, assignedBy: currentTask.assignedBy);
-                                setState(() { currentTask = TaskModel(id: currentTask.id, title: currentTask.title, description: currentTask.description, assignedTo: currentTask.assignedTo, assignedBy: currentTask.assignedBy, isDone: val, deadline: currentTask.deadline, createdAt: currentTask.createdAt, comments: currentTask.comments); });
-                              }, 
-                              activeColor: const Color(0xFF6C63FF)
-                            ),
-                          ],
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _getPriorityColor(currentTask.priority).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          currentTask.priority.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: _getPriorityColor(currentTask.priority),
+                            letterSpacing: 1.2,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 40),
-                      const Text('Comments', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 16),
+                      Hero(
+                        tag: 'task_title_${currentTask.id}',
+                        child: Material(
+                          color: Colors.transparent,
+                          child: Text(
+                            currentTask.title, 
+                            style: GoogleFonts.inter(
+                              fontSize: 32, 
+                              fontWeight: FontWeight.w800,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        currentTask.description, 
+                        style: GoogleFonts.inter(
+                          fontSize: 16, 
+                          color: Colors.grey[500], 
+                          height: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      
+                      // Details Grid
+                      Row(
+                        children: [
+                          Expanded(child: _infoCard(context, Icons.calendar_today_rounded, 'Due Date', DateFormat('MMM d, yyyy').format(currentTask.deadline))),
+                          const SizedBox(width: 16),
+                          Expanded(child: _infoCard(context, Icons.category_outlined, 'Category', currentTask.category)),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      
+                      // Status Toggle
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+                        ),
+                        child: StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance.collection('tasks').doc(currentTask.id).snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData || !snapshot.data!.exists) {
+                              return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)));
+                            }
+                            
+                            final liveTask = TaskModel.fromFirestore(snapshot.data!);
+                            final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                            // SWAPPED LOGIC: Only the person it is assigned TO can change the status
+                            final bool canChangeStatus = currentUid != null && currentUid == liveTask.assignedTo;
+
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Task Status', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    Text(liveTask.isDone ? 'Completed' : 'In Progress', style: GoogleFonts.inter(fontSize: 12, color: Colors.grey)),
+                                  ],
+                                ),
+                                if (canChangeStatus)
+                                  Switch(
+                                    value: liveTask.isDone, 
+                                    onChanged: (val) {
+                                      dbService.updateTaskStatus(liveTask.id, val, taskTitle: liveTask.title, assignedBy: liveTask.assignedBy);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(val ? 'Task completed! 🎉' : 'Task reopened 🔄'),
+                                          behavior: SnackBarBehavior.floating,
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }, 
+                                    activeColor: const Color(0xFF6C63FF),
+                                  )
+                                else
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'View Only',
+                                      style: GoogleFonts.inter(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          }
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 40),
+                      Text('Comments', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 16),
+                      
                       StreamBuilder<DocumentSnapshot>(
                         stream: FirebaseFirestore.instance.collection('tasks').doc(currentTask.id).snapshots(),
                         builder: (context, snapshot) {
@@ -407,9 +962,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           final comments = taskData.comments;
 
                           if (comments.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 20.0),
-                              child: Text('No comments yet. Be the first!', style: TextStyle(color: Colors.grey)),
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 40.0),
+                                child: Column(
+                                  children: [
+                                    Icon(Icons.forum_outlined, size: 48, color: Colors.grey[300]),
+                                    const SizedBox(height: 12),
+                                    Text('No comments yet', style: GoogleFonts.inter(color: Colors.grey)),
+                                  ],
+                                ),
+                              ),
                             );
                           }
 
@@ -419,12 +982,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             itemCount: comments.length,
                             itemBuilder: (context, index) {
                               final c = comments[index];
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 16.0),
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+                                ),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    CircleAvatar(radius: 18, backgroundImage: NetworkImage(c.userPhoto)),
+                                    CircleAvatar(radius: 20, backgroundImage: NetworkImage(c.userPhoto)),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
@@ -433,12 +1002,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                           Row(
                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
-                                              Text(c.userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                              Text(DateFormat('hh:mm a').format(c.timestamp), style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                                              Text(c.userName, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
+                                              Text(DateFormat('hh:mm a').format(c.timestamp), style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
                                             ],
                                           ),
-                                          const SizedBox(height: 4),
-                                          Text(c.text, style: const TextStyle(fontSize: 14)),
+                                          const SizedBox(height: 6),
+                                          Text(c.text, style: GoogleFonts.inter(fontSize: 14, color: isDark ? Colors.grey[300] : Colors.black87, height: 1.4)),
                                         ],
                                       ),
                                     ),
@@ -453,187 +1022,596 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ),
                 ),
               ),
-              // Comment Input
+              
+              // Comment Input Field
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(context).viewInsets.bottom > 0 ? 16 : (MediaQuery.of(context).padding.bottom + 16)),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+                  color: isDark ? Colors.black : Colors.white,
+                  border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05))),
                 ),
-                child: SafeArea(
-                  child: Row(
-                    children: [
+                child: Row(
+                  children: [
                       Expanded(
                         child: TextField(
                           controller: _commentController,
+                          style: GoogleFonts.inter(),
                           decoration: InputDecoration(
                             hintText: 'Add a comment...',
+                            hintStyle: GoogleFonts.inter(color: Colors.grey),
                             filled: true,
-                            fillColor: Theme.of(context).colorScheme.surface,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                            fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       GestureDetector(
-                        onTap: () async {
+                        onTap: _isSending ? null : () async {
                           final text = _commentController.text.trim();
                           if (text.isNotEmpty && user != null) {
-                            final comment = CommentModel(
-                              uid: user.uid,
-                              userName: user.displayName ?? 'Unknown',
-                              userPhoto: user.photoURL ?? '',
-                              text: text,
-                              timestamp: DateTime.now(),
-                            );
-                            
-                            // 1. Notify the primary recipient
-                            final recipient = user.uid == currentTask.assignedTo ? currentTask.assignedBy : currentTask.assignedTo;
-                            await dbService.addComment(currentTask.id, comment, recipient, currentTask.title);
-
-                            // 2. Parse and notify @mentions
-                            for (var teamUser in _allUsers) {
-                              if (text.contains('@${teamUser.name}') && teamUser.uid != recipient && teamUser.uid != user.uid) {
-                                await FcmV1Service.sendNotification(
-                                  recipientUid: teamUser.uid,
-                                  title: 'You were mentioned! 🔔',
-                                  body: '${user.displayName} mentioned you in ${currentTask.title}',
+                            setState(() => _isSending = true);
+                            try {
+                              final comment = CommentModel(
+                                uid: user.uid,
+                                userName: user.displayName ?? 'Unknown',
+                                userPhoto: user.photoURL ?? '',
+                                text: text,
+                                timestamp: DateTime.now(),
+                              );
+                              final recipient = user.uid == currentTask.assignedTo ? currentTask.assignedBy : currentTask.assignedTo;
+                              await dbService.addComment(currentTask.id, comment, recipient, currentTask.title);
+                              _commentController.clear();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Comment posted! 💬'),
+                                    behavior: SnackBarBehavior.floating,
+                                    duration: Duration(seconds: 2),
+                                  ),
                                 );
                               }
+                            } finally {
+                              if (mounted) setState(() => _isSending = false);
                             }
-
-                            _commentController.clear();
-                            setState(() => _showMentions = false);
                           }
                         },
-                        child: Container(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.all(12),
-                          decoration: const BoxDecoration(color: Color(0xFF6C63FF), shape: BoxShape.circle),
-                          child: const Icon(Icons.send, color: Colors.white, size: 20),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: _isSending 
+                                ? [Colors.grey, Colors.grey.shade600]
+                                : [const Color(0xFF6C63FF), const Color(0xFF3B33FF)]
+                            ),
+                          ),
+                          child: _isSending 
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-          // Mention List Dropdown
-          if (_showMentions)
-            StreamBuilder<List<AppUser>>(
-              stream: dbService.getAllUsers(),
-              builder: (context, snapshot) {
-                _allUsers = snapshot.data ?? [];
-                if (_allUsers.isEmpty) return const SizedBox();
-
-                return Positioned(
-                  bottom: 100,
-                  left: 20,
-                  right: 20,
-                  child: Container(
-                    constraints: const BoxConstraints(maxHeight: 200),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _allUsers.length,
-                      itemBuilder: (context, index) {
-                        final u = _allUsers[index];
-                        return ListTile(
-                          leading: CircleAvatar(radius: 15, backgroundImage: NetworkImage(u.photoUrl)),
-                          title: Text(u.name, style: const TextStyle(fontSize: 14)),
-                          onTap: () {
-                            final text = _commentController.text;
-                            final lastAtIndex = text.lastIndexOf('@');
-                            _commentController.text = text.substring(0, lastAtIndex + 1) + u.name + ' ';
-                            _commentController.selection = TextSelection.fromPosition(TextPosition(offset: _commentController.text.length));
-                            setState(() => _showMentions = false);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                );
-              }
-            ),
         ],
       ),
     );
   }
+
+  Widget _infoCard(BuildContext context, IconData icon, String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: const Color(0xFF6C63FF)),
+          const SizedBox(height: 12),
+          Text(label, style: GoogleFonts.inter(fontSize: 12, color: Colors.grey)),
+          Text(value, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high': return Colors.redAccent;
+      case 'medium': return Colors.orangeAccent;
+      case 'low': return Colors.blueAccent;
+      default: return Colors.grey;
+    }
+  }
 }
 
-class MyTasksView extends StatelessWidget {
+class MyTasksView extends StatefulWidget {
   const MyTasksView({super.key});
+
+  @override
+  State<MyTasksView> createState() => _MyTasksViewState();
+}
+
+class _MyTasksViewState extends State<MyTasksView> {
+  int _selectedRole = 0; // 0 for "My Work", 1 for "Delegated"
 
   @override
   Widget build(BuildContext context) {
     final user = Provider.of<User?>(context);
     if (user == null) return const SizedBox();
     final dbService = DatabaseService();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My Tasks'), elevation: 0),
-      body: StreamBuilder<List<TaskModel>>(
-        stream: dbService.getTasks(user.uid),
-        builder: (context, snapshot) {
-          final tasks = snapshot.data?.where((t) => t.assignedTo == user.uid).toList() ?? [];
-          if (tasks.isEmpty) return const Center(child: Text('No tasks assigned to you.'));
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'My Tasks',
+                    style: GoogleFonts.inter(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      _actionIcon(
+                        context, 
+                        const Icon(Icons.cleaning_services_rounded, size: 22, color: Colors.orange),
+                        () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Clean Up?'),
+                              content: const Text('This will permanently delete all your completed tasks. This action cannot be undone.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true), 
+                                  child: const Text('Delete All', style: TextStyle(color: Colors.red))
+                                ),
+                              ],
+                            ),
+                          );
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(20),
-            itemCount: tasks.length,
-            itemBuilder: (context, index) {
-              final task = tasks[index];
-              return TaskItem(
-                title: task.title,
-                subtitle: DateFormat('dd MMM yyyy').format(task.deadline),
-                isDone: task.isDone,
-                isOverdue: task.deadline.isBefore(DateTime.now()),
-                photoUrl: user.photoURL ?? '',
-                onToggle: () => dbService.updateTaskStatus(task.id, !task.isDone, taskTitle: task.title, assignedBy: task.assignedBy),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task))),
-              );
-            },
+                          if (confirm == true) {
+                            await dbService.deleteCompletedTasks(user.uid);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Completed tasks cleared! ✨')),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      _actionIcon(
+                        context, 
+                        const Icon(Icons.notifications_none_rounded, size: 24),
+                        () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen())),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Premium Role Switcher
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: const EdgeInsets.all(4),
+              height: 50,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  _roleTab('My Work', 0, isDark),
+                  _roleTab('Delegated', 1, isDark),
+                ],
+              ),
+            ),
+
+            Expanded(
+              child: StreamBuilder<List<TaskModel>>(
+                stream: dbService.getTasks(user.uid),
+                builder: (context, snapshot) {
+                  final allTasks = snapshot.data ?? [];
+                  final tasks = _selectedRole == 0
+                      ? allTasks.where((t) => t.assignedTo == user.uid).toList()
+                      : allTasks.where((t) => t.assignedBy == user.uid && t.assignedTo != user.uid).toList();
+
+                  if (tasks.isEmpty) return _emptyState();
+
+                  return ListView.builder(
+                    padding: EdgeInsets.fromLTRB(24, 10, 24, MediaQuery.of(context).padding.bottom + 100),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: tasks.length,
+                    itemBuilder: (context, index) {
+                      return _buildTaskItem(context, tasks[index], dbService);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _roleTab(String label, int index, bool isDark) {
+    final isSelected = _selectedRole == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedRole = index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.elasticOut,
+          decoration: BoxDecoration(
+            color: isSelected 
+                ? (isDark ? const Color(0xFF6C63FF) : Colors.white) 
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected && !isDark 
+                ? [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))]
+                : null,
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                color: isSelected 
+                    ? (isDark ? Colors.white : const Color(0xFF6C63FF)) 
+                    : Colors.grey[500],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionIcon(BuildContext context, Widget icon, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03)),
+        ),
+        child: icon,
+      ),
+    );
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            _selectedRole == 0 ? Icons.assignment_turned_in_outlined : Icons.hail_rounded, 
+            size: 64, 
+            color: Colors.grey[300]
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _selectedRole == 0 ? 'No tasks assigned to you' : 'No delegated tasks found', 
+            style: GoogleFonts.inter(color: Colors.grey, fontSize: 16)
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
+      child: Text(
+        title,
+        style: GoogleFonts.inter(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey[500],
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskItem(BuildContext context, TaskModel task, DatabaseService db) {
+    return TweenAnimationBuilder(
+      duration: const Duration(milliseconds: 400),
+      tween: Tween<double>(begin: 0, end: 1),
+      builder: (context, double value, child) {
+        return Transform.translate(
+          offset: Offset(0, 20 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: child,
+          ),
+        );
+      },
+      child: TaskItem(
+        id: task.id,
+        title: task.title,
+        subtitle: DateFormat('MMM d, yyyy').format(task.deadline),
+        isDone: task.isDone,
+        isOverdue: task.deadline.isBefore(DateTime.now()) && !task.isDone,
+        photoUrl: 'https://ui-avatars.com/api/?name=${task.assignedTo.substring(0, 2)}&background=random',
+        category: task.category,
+        priority: task.priority,
+        canToggle: _selectedRole == 0,
+        onToggle: () {
+          final newStatus = !task.isDone;
+          db.updateTaskStatus(task.id, newStatus, taskTitle: task.title, assignedBy: task.assignedBy);
+          HapticFeedback.mediumImpact();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newStatus ? 'Task completed! 🎉' : 'Task reopened 🔄'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
           );
         },
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task))),
       ),
     );
   }
 }
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final _nameController = TextEditingController();
+  final _designationController = TextEditingController();
+  bool _isLoading = false;
+  File? _imageFile;
+  final ImagePicker _picker = ImagePicker();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _designationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (image != null) {
+      setState(() => _imageFile = File(image.path));
+    }
+  }
+
+  Future<void> _saveProfile(String uid) async {
+    setState(() => _isLoading = true);
+    try {
+      String? photoUrl;
+      if (_imageFile != null) {
+        photoUrl = await DatabaseService().uploadProfileImage(uid, _imageFile!);
+      }
+
+      await DatabaseService().updateUserProfile(
+        uid,
+        name: _nameController.text.trim(),
+        designation: _designationController.text.trim(),
+        photoUrl: photoUrl,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated successfully!')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final user = Provider.of<User?>(context);
-    if (user == null) return const SizedBox();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (user == null) return const Center(child: CircularProgressIndicator());
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
+        final userData = AppUser.fromMap(snapshot.data!.data() as Map<String, dynamic>);
+        
+        // Only set controllers if they are empty (first load)
+        if (_nameController.text.isEmpty) _nameController.text = userData.name;
+        if (_designationController.text.isEmpty) _designationController.text = userData.designation;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile'), elevation: 0),
-      body: Center(
+      body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(radius: 50, backgroundImage: NetworkImage(user.photoURL ?? '')),
-            const SizedBox(height: 16),
-            Text(user.displayName ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            Text(user.email ?? '', style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 40),
+            // Compact Header
+            Container(
+              height: 200,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [const Color(0xFF6C63FF), const Color(0xFF3B33FF).withOpacity(0.8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 30),
+                  GestureDetector(
+                    onTap: _pickImage,
+                    child: Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                          child: CircleAvatar(
+                            radius: 40,
+                            backgroundImage: _imageFile != null 
+                                ? FileImage(_imageFile!) 
+                                : (userData.photoUrl.isNotEmpty ? NetworkImage(userData.photoUrl) : null) as ImageProvider?,
+                            child: (userData.photoUrl.isEmpty && _imageFile == null) 
+                                ? const Icon(Icons.person, size: 40) 
+                                : null,
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            child: const Icon(Icons.camera_alt_rounded, size: 14, color: Color(0xFF6C63FF)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    userData.name,
+                    style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  Text(
+                    userData.designation,
+                    style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withOpacity(0.8)),
+                  ),
+                ],
+              ),
+            ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: PrimaryButton(
-                text: 'Logout',
-                color: Colors.red.withOpacity(0.1),
-                textColor: Colors.red,
-                onPressed: () => Provider.of<AuthService>(context, listen: false).signOut(),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionTitle('Account Information', isDark),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _nameController,
+                    label: 'Full Name',
+                    icon: Icons.person_outline_rounded,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    controller: _designationController,
+                    label: 'Designation',
+                    icon: Icons.work_outline_rounded,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    controller: TextEditingController(text: userData.email),
+                    label: 'Email',
+                    icon: Icons.email_outlined,
+                    isDark: isDark,
+                    enabled: false,
+                  ),
+                  const SizedBox(height: 24),
+                  if (_isLoading)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    PrimaryButton(
+                      text: 'Save Changes',
+                      onPressed: () => _saveProfile(user.uid),
+                    ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: () async {
+                      await AuthService().signOut();
+                      if (mounted) Navigator.pushReplacementNamed(context, '/login');
+                    },
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      side: BorderSide(color: Colors.red.withOpacity(0.3)),
+                    ),
+                    child: Text('Logout', style: GoogleFonts.inter(color: Colors.red, fontWeight: FontWeight.bold)),
+                  ),
+                  SizedBox(height: MediaQuery.of(context).padding.bottom + 100), 
+                ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+      },
+    );
+  }
+
+  Widget _sectionTitle(String title, bool isDark) {
+    return Text(
+      title.toUpperCase(),
+      style: GoogleFonts.inter(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        color: Colors.grey[500],
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required bool isDark,
+    bool enabled = true,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+      ),
+      child: TextField(
+        controller: controller,
+        enabled: enabled,
+        style: GoogleFonts.inter(color: isDark ? Colors.white : Colors.black87),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
+          prefixIcon: Icon(icon, color: const Color(0xFF6C63FF).withOpacity(0.7)),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         ),
       ),
     );

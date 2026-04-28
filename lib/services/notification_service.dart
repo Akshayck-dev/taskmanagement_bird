@@ -1,7 +1,11 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:io';
+import '../main.dart';
+import '../models/app_models.dart';
+import '../screens/home_screens.dart';
 
 class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
@@ -44,6 +48,33 @@ class NotificationService {
           _showLocalNotification(message);
         }
       });
+
+      // Handle click on background notifications
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
+
+      // Handle click on terminated app notifications
+      RemoteMessage? initialMessage = await _fcm.getInitialMessage();
+      if (initialMessage != null) {
+        _handleMessage(initialMessage);
+      }
+    }
+  }
+
+  void _handleMessage(RemoteMessage message) async {
+    final taskId = message.data['taskId'];
+    if (taskId != null) {
+      try {
+        final doc = await _db.collection('tasks').doc(taskId).get();
+        if (doc.exists && navigatorKey.currentContext != null) {
+          final task = TaskModel.fromFirestore(doc);
+          Navigator.push(
+            navigatorKey.currentContext!,
+            MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task)),
+          );
+        }
+      } catch (e) {
+        print('Error handling deep link: $e');
+      }
     }
   }
 

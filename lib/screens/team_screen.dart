@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../models/app_models.dart';
 import '../services/firebase_service.dart';
-import 'home_screens.dart'; // To navigate to TaskDetailScreen
+import 'home_screens.dart';
 
 class TeamScreen extends StatefulWidget {
   const TeamScreen({super.key});
@@ -17,102 +19,104 @@ class _TeamScreenState extends State<TeamScreen> {
   @override
   Widget build(BuildContext context) {
     final dbService = DatabaseService();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text(
-          'Team Members',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.5,
-          ),
-        ),
-        elevation: 0,
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-      ),
-      body: Column(
-        children: [
-          // Search Bar (Like Customer Section)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
-              decoration: InputDecoration(
-                hintText: 'Search members...',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Theme.of(context).colorScheme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: BorderSide.none,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+              child: Text(
+                'Team Members',
+                style: GoogleFonts.inter(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
               ),
             ),
-          ),
-          Expanded(
-            child: StreamBuilder<List<AppUser>>(
-              stream: dbService.getAllUsers(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final users = snapshot.data?.where((u) => u.name.toLowerCase().contains(_searchQuery)).toList() ?? [];
-                
-                if (users.isEmpty) {
-                  return const Center(child: Text('No members found.'));
-                }
-
-                return ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  itemCount: users.length,
-                  separatorBuilder: (context, index) => Divider(
-                    color: Theme.of(context).dividerColor.withOpacity(0.1),
-                    height: 40,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                decoration: InputDecoration(
+                  hintText: 'Search members...',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  filled: true,
+                  fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
                   ),
-                  itemBuilder: (context, index) {
-                    final user = users[index];
-                    return InkWell(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => MemberDetailScreen(user: user)),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 35,
-                            backgroundColor: Colors.grey[200],
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                ),
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<List<AppUser>>(
+                stream: dbService.getAllUsers(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final users = snapshot.data?.where((u) => u.name.toLowerCase().contains(_searchQuery)).toList() ?? [];
+                  
+                  if (users.isEmpty) {
+                    return Center(
+                      child: Text('No members found', style: GoogleFonts.inter(color: Colors.grey)),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: EdgeInsets.fromLTRB(24, 10, 24, MediaQuery.of(context).padding.bottom + 100),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: users.length,
+                    itemBuilder: (context, index) {
+                      final user = users[index];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+                        ),
+                        child: ListTile(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => MemberDetailScreen(user: user)),
+                          ),
+                          contentPadding: const EdgeInsets.all(12),
+                          leading: CircleAvatar(
+                            radius: 28,
                             backgroundImage: NetworkImage(user.photoUrl),
                           ),
-                          const SizedBox(width: 20),
-                          Text(
+                          title: Text(
                             user.name,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
-                          const Spacer(),
-                          const Icon(Icons.chevron_right, color: Colors.grey),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
+                          subtitle: Text(
+                            user.email,
+                            style: GoogleFonts.inter(fontSize: 12, color: Colors.grey),
+                          ),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-// Detailed view for a member (Shows their tasks)
 class MemberDetailScreen extends StatelessWidget {
   final AppUser user;
   const MemberDetailScreen({super.key, required this.user});
@@ -120,29 +124,36 @@ class MemberDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dbService = DatabaseService();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(title: Text(user.name), elevation: 0),
+      appBar: AppBar(title: Text(user.name, style: GoogleFonts.inter(fontWeight: FontWeight.bold)), elevation: 0),
       body: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(24),
             width: double.infinity,
-            color: Theme.of(context).colorScheme.surface,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
+            ),
             child: Column(
               children: [
                 CircleAvatar(radius: 50, backgroundImage: NetworkImage(user.photoUrl)),
                 const SizedBox(height: 16),
-                Text(user.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                Text(user.email, style: const TextStyle(color: Colors.grey)),
+                Text(user.name, style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800)),
+                Text(user.email, style: GoogleFonts.inter(color: Colors.grey[500], fontWeight: FontWeight.w500)),
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.all(20.0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Assigned Tasks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Assigned Tasks',
+                style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
             ),
           ),
           Expanded(
@@ -150,17 +161,32 @@ class MemberDetailScreen extends StatelessWidget {
               stream: dbService.getTasks(user.uid),
               builder: (context, snapshot) {
                 final tasks = snapshot.data?.where((t) => t.assignedTo == user.uid).toList() ?? [];
-                if (tasks.isEmpty) return const Center(child: Text('No tasks assigned yet.'));
+                if (tasks.isEmpty) {
+                  return Center(child: Text('No tasks assigned yet', style: GoogleFonts.inter(color: Colors.grey)));
+                }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   itemCount: tasks.length,
                   itemBuilder: (context, index) {
                     final task = tasks[index];
                     return ListTile(
-                      title: Text(task.title, style: TextStyle(decoration: task.isDone ? TextDecoration.lineThrough : null)),
-                      subtitle: Text('Due: ${task.deadline.day}/${task.deadline.month}'),
-                      trailing: Icon(task.isDone ? Icons.check_circle : Icons.radio_button_unchecked, color: task.isDone ? Colors.green : Colors.grey),
+                      title: Text(
+                        task.title,
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.bold,
+                          decoration: task.isDone ? TextDecoration.lineThrough : null,
+                          color: task.isDone ? Colors.grey : (isDark ? Colors.white : Colors.black87),
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Due: ${DateFormat('MMM d').format(task.deadline)}',
+                        style: GoogleFonts.inter(fontSize: 12, color: Colors.grey),
+                      ),
+                      trailing: Icon(
+                        task.isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                        color: task.isDone ? Colors.green : Colors.grey,
+                      ),
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task)),

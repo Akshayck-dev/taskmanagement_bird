@@ -5,6 +5,7 @@ class AppUser {
   final String name;
   final String email;
   final String photoUrl;
+  final String designation;
   final String? fcmToken;
 
   AppUser({
@@ -12,6 +13,7 @@ class AppUser {
     required this.name,
     required this.email,
     required this.photoUrl,
+    this.designation = 'Member',
     this.fcmToken,
   });
 
@@ -21,6 +23,7 @@ class AppUser {
       name: map['name'] ?? '',
       email: map['email'] ?? '',
       photoUrl: map['photoUrl'] ?? '',
+      designation: map['designation'] ?? 'Member',
       fcmToken: map['fcmToken'],
     );
   }
@@ -31,6 +34,7 @@ class AppUser {
       'name': name,
       'email': email,
       'photoUrl': photoUrl,
+      'designation': designation,
       'fcmToken': fcmToken,
     };
   }
@@ -81,6 +85,8 @@ class TaskModel {
   final bool isDone;
   final DateTime deadline;
   final DateTime createdAt;
+  final String category;
+  final String priority;
   final List<CommentModel> comments;
 
   TaskModel({
@@ -92,6 +98,8 @@ class TaskModel {
     required this.isDone,
     required this.deadline,
     required this.createdAt,
+    this.category = 'General',
+    this.priority = 'Medium',
     this.comments = const [],
   });
 
@@ -106,6 +114,8 @@ class TaskModel {
       isDone: data['isDone'] ?? false,
       deadline: (data['deadline'] as Timestamp).toDate(),
       createdAt: (data['createdAt'] as Timestamp).toDate(),
+      category: data['category'] ?? 'General',
+      priority: data['priority'] ?? 'Medium',
       comments: (data['comments'] as List? ?? [])
           .map((c) => CommentModel.fromMap(c as Map<String, dynamic>))
           .toList(),
@@ -121,7 +131,53 @@ class TaskModel {
       'isDone': isDone,
       'deadline': Timestamp.fromDate(deadline),
       'createdAt': Timestamp.fromDate(createdAt),
+      'category': category,
+      'priority': priority,
       'comments': comments.map((c) => c.toMap()).toList(),
     };
+  }
+}
+
+class NotificationModel {
+  final String id;
+  final String title;
+  final String body;
+  final DateTime timestamp;
+  final Map<String, dynamic>? data;
+  final bool isRead;
+  final String? senderPhoto;
+
+  NotificationModel({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.timestamp,
+    this.data,
+    this.isRead = false,
+    this.senderPhoto,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'body': body,
+      'timestamp': timestamp.toIso8601String(),
+      'data': data,
+      'isRead': isRead,
+      'senderPhoto': senderPhoto,
+    };
+  }
+
+  factory NotificationModel.fromFirestore(DocumentSnapshot doc) {
+    final map = doc.data() as Map<String, dynamic>;
+    return NotificationModel(
+      id: doc.id,
+      title: map['title'] ?? '',
+      body: map['body'] ?? '',
+      timestamp: DateTime.parse(map['timestamp']),
+      data: map['data'],
+      isRead: map['isRead'] ?? false,
+      senderPhoto: map['senderPhoto'],
+    );
   }
 }
