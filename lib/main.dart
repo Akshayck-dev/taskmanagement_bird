@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 
 import 'services/firebase_service.dart';
 import 'services/notification_service.dart';
@@ -10,6 +11,7 @@ import 'services/theme_provider.dart';
 import 'screens/auth_screens.dart';
 import 'screens/home_screens.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'services/supabase_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -22,7 +24,16 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(); 
+  await SupabaseService.initialize();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
+  // Set system UI style for full screen / edge-to-edge look
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    systemNavigationBarColor: Colors.transparent,
+    statusBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: Brightness.dark, // Default, will be updated by theme
+  ));
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   
   // Add dummy users for testing purposes
   try {
@@ -84,7 +95,6 @@ class TaskFlowApp extends StatelessWidget {
             initialRoute: '/',
             routes: {
               '/': (context) => const AuthWrapper(),
-              '/onboarding': (context) => const OnboardingScreen(),
               '/login': (context) => const LoginScreen(),
               '/home': (context) => const HomeScreen(),
             },
@@ -106,8 +116,7 @@ class AuthWrapper extends StatelessWidget {
       NotificationService().init(user.uid);
       return const HomeScreen();
     } else {
-      // In a real app, you might check if onboarding was seen
-      return const OnboardingScreen();
+      return const LoginScreen();
     }
   }
 }

@@ -77,33 +77,30 @@ class _TeamScreenState extends State<TeamScreen> {
                     itemCount: users.length,
                     itemBuilder: (context, index) {
                       final user = users[index];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
-                        ),
-                        child: ListTile(
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => MemberDetailScreen(user: user)),
+                      return Column(
+                        children: [
+                          ListTile(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => MemberDetailScreen(user: user)),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                            leading: CircleAvatar(
+                              radius: 28,
+                              backgroundImage: NetworkImage(user.photoUrl),
+                            ),
+                            title: Text(
+                              user.name,
+                              style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            subtitle: Text(
+                              user.email,
+                              style: GoogleFonts.inter(fontSize: 12, color: Colors.grey),
+                            ),
+                            trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
                           ),
-                          contentPadding: const EdgeInsets.all(12),
-                          leading: CircleAvatar(
-                            radius: 28,
-                            backgroundImage: NetworkImage(user.photoUrl),
-                          ),
-                          title: Text(
-                            user.name,
-                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          subtitle: Text(
-                            user.email,
-                            style: GoogleFonts.inter(fontSize: 12, color: Colors.grey),
-                          ),
-                          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                        ),
+                          Divider(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05), height: 1),
+                        ],
                       );
                     },
                   );
@@ -131,18 +128,17 @@ class MemberDetailScreen extends StatelessWidget {
       body: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
             width: double.infinity,
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
+            decoration: const BoxDecoration(
+              color: Colors.transparent,
             ),
             child: Column(
               children: [
                 CircleAvatar(radius: 50, backgroundImage: NetworkImage(user.photoUrl)),
                 const SizedBox(height: 16),
-                Text(user.name, style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800)),
-                Text(user.email, style: GoogleFonts.inter(color: Colors.grey[500], fontWeight: FontWeight.w500)),
+                Text(user.name, style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800)),
+                Text(user.email, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 14, fontWeight: FontWeight.w500)),
               ],
             ),
           ),

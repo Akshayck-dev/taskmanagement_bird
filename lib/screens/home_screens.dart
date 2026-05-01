@@ -16,6 +16,10 @@ import 'dart:io';
 import 'notification_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:record/record.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -79,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       bottomNavigationBar: Container(
-        height: 90,
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
         decoration: BoxDecoration(
           color: isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.7),
           border: Border(
@@ -93,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: BottomAppBar(
-              height: 90,
+              height: 70, // Reduced base height since padding is handled by Container
               color: Colors.transparent,
               elevation: 0,
               padding: EdgeInsets.zero,
@@ -104,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   _navItem(Icons.grid_view_rounded, Icons.grid_view_rounded, 'Home', 0),
                   _navItem(Icons.task_alt_rounded, Icons.task_alt_rounded, 'Tasks', 1),
-                  const SizedBox(width: 70), // Increased space for FAB notch
+                  const SizedBox(width: 70), // Space for FAB notch
                   _navItem(Icons.group_rounded, Icons.group_rounded, 'Team', 3),
                   _navItem(Icons.person_rounded, Icons.person_rounded, 'Profile', 4),
                 ],
@@ -282,6 +286,8 @@ class TasksView extends StatelessWidget {
                     final todayTasks = pendingTasks.where((t) => _isSameDay(t.deadline, today)).toList();
                     final upcomingTasks = pendingTasks.where((t) => t.deadline.isAfter(today.add(const Duration(days: 1)))).toList();
 
+                    final otherTasks = pendingTasks.where((t) => !todayTasks.contains(t) && !upcomingTasks.contains(t)).toList();
+
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -331,7 +337,6 @@ class TasksView extends StatelessWidget {
                         ],
                         
                         // Remaining pending tasks that are neither today nor upcoming (overdue etc)
-                        final otherTasks = pendingTasks.where((t) => !todayTasks.contains(t) && !upcomingTasks.contains(t)).toList();
                         if (otherTasks.isNotEmpty) ...[
                           _sectionHeader('Other Pending'),
                           ...otherTasks.map((t) => _buildTaskItem(context, t, dbService)),
@@ -492,7 +497,7 @@ class CreateTaskBottomSheet extends StatefulWidget {
   State<CreateTaskBottomSheet> createState() => _CreateTaskBottomSheetState();
 }
 
-class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
+  class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
   String? _selectedAssignee;
@@ -502,6 +507,43 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
   bool _showMentions = false;
   bool _isLoading = false;
   List<AppUser> _allUsers = [];
+  File? _taskImage;
+  String? _audioPath;
+  bool _isRecording = false;
+  final ImagePicker _picker = ImagePicker();
+  final AudioRecorder _audioRecorder = AudioRecorder();
+
+  Future<void> _startRecording() async {
+    try {
+      if (await _audioRecorder.hasPermission()) {
+        final directory = await getApplicationDocumentsDirectory();
+        final path = '${directory.path}/task_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        await _audioRecorder.start(const RecordConfig(), path: path);
+        setState(() => _isRecording = true);
+      }
+    } catch (e) {
+      print('Error starting recording: $e');
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    try {
+      final path = await _audioRecorder.stop();
+      setState(() {
+        _isRecording = false;
+        _audioPath = path;
+      });
+    } catch (e) {
+      print('Error stopping recording: $e');
+    }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(source: source, imageQuality: 70);
+    if (image != null) {
+      setState(() => _taskImage = File(image.path));
+    }
+  }
 
   @override
   void initState() {
@@ -636,13 +678,18 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                       lastDate: DateTime.now().add(const Duration(days: 365)),
                     );
                     if (pickedDate != null && mounted) {
+                      final pickedTime = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(_selectedDeadline),
+                      );
+                      
                       setState(() {
-                        // Keep the time at 6:00 PM (End of business day)
                         _selectedDeadline = DateTime(
                           pickedDate.year, 
                           pickedDate.month, 
                           pickedDate.day, 
-                          18, 0,
+                          pickedTime?.hour ?? 18, 
+                          pickedTime?.minute ?? 0,
                         );
                       });
                     }
@@ -659,7 +706,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                         Icon(Icons.calendar_month_rounded, size: 20, color: isDark ? Colors.grey[400] : Colors.grey[600]),
                         const SizedBox(width: 12),
                         Text(
-                          DateFormat('EEEE, MMM d, yyyy - 6:00 PM').format(_selectedDeadline),
+                          DateFormat('EEEE, MMM d, yyyy - h:mm a').format(_selectedDeadline),
                           style: GoogleFonts.inter(
                             color: isDark ? Colors.white : Colors.black87,
                             fontWeight: FontWeight.w500,
@@ -670,38 +717,130 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                   ),
                 ),
                 const SizedBox(height: 32),
+                _buildFieldLabel('Attachment'),
+                Row(
+                  children: [
+                    _attachmentButton(Icons.camera_alt_rounded, 'Camera', () => _pickImage(ImageSource.camera), isDark),
+                    const SizedBox(width: 12),
+                    _attachmentButton(Icons.photo_library_rounded, 'Gallery', () => _pickImage(ImageSource.gallery), isDark),
+                    const SizedBox(width: 12),
+                    _attachmentButton(
+                      _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded, 
+                      _isRecording ? 'Stop' : 'Audio', 
+                      _isRecording ? _stopRecording : _startRecording, 
+                      isDark,
+                      color: _isRecording ? Colors.red : null,
+                    ),
+                  ],
+                ),
+                if (_taskImage != null || _audioPath != null) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      if (_taskImage != null)
+                        Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.file(_taskImage!, height: 80, width: 80, fit: BoxFit.cover),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: GestureDetector(
+                                onTap: () => setState(() => _taskImage = null),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                                  child: const Icon(Icons.close, color: Colors.white, size: 14),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      if (_audioPath != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6C63FF).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.audiotrack_rounded, size: 16, color: Color(0xFF6C63FF)),
+                              const SizedBox(width: 8),
+                              Text('Audio Recording', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF6C63FF))),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => setState(() => _audioPath = null),
+                                child: const Icon(Icons.close, size: 14, color: Color(0xFF6C63FF)),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 32),
                 PrimaryButton(
                   text: 'Create Task',
                   isLoading: _isLoading,
                   onPressed: () async {
-                    if (_titleController.text.isNotEmpty && _selectedAssignee != null) {
-                      setState(() => _isLoading = true);
-                      try {
-                        await dbService.createTask(TaskModel(
-                          id: '',
-                          title: _titleController.text,
-                          description: _descController.text,
-                          assignedTo: _selectedAssignee!,
-                          assignedBy: widget.currentUserId,
-                          isDone: false,
-                          deadline: _selectedDeadline,
-                          createdAt: DateTime.now(),
-                          category: 'General',
-                          priority: _selectedPriority,
-                        ));
-                        if (mounted) Navigator.pop(context);
-                      } catch (e) {
-                        if (mounted) {
-                          setState(() => _isLoading = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error creating task: $e')),
-                          );
-                        }
-                      }
-                    } else if (_selectedAssignee == null) {
+                    if (_titleController.text.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please select an assignee')),
+                        const SnackBar(
+                          content: Text('Please enter a task title'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
                       );
+                      return;
+                    }
+                    if (_selectedAssignee == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please select an assignee'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      return;
+                    }
+
+                    setState(() => _isLoading = true);
+                    try {
+                      String? imageUrl;
+                      String? audioUrl;
+                      if (_taskImage != null) {
+                        imageUrl = await dbService.uploadTaskImage(_taskImage!);
+                      }
+                      if (_audioPath != null) {
+                        audioUrl = await dbService.uploadTaskAudio(File(_audioPath!));
+                      }
+
+                      await dbService.createTask(TaskModel(
+                        id: '',
+                        title: _titleController.text,
+                        description: _descController.text,
+                        assignedTo: _selectedAssignee!,
+                        assignedBy: widget.currentUserId,
+                        isDone: false,
+                        deadline: _selectedDeadline,
+                        createdAt: DateTime.now(),
+                        category: 'General',
+                        priority: _selectedPriority,
+                        imageUrl: imageUrl,
+                        audioUrl: audioUrl,
+                      ));
+                      if (mounted) Navigator.pop(context);
+                    } catch (e) {
+                      if (mounted) {
+                        setState(() => _isLoading = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error creating task: $e'), behavior: SnackBarBehavior.floating),
+                        );
+                      }
                     }
                   },
                 ),
@@ -750,7 +889,28 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
     );
   }
 
+  Widget _attachmentButton(IconData icon, String label, VoidCallback onTap, bool isDark, {Color? color}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: color ?? const Color(0xFF6C63FF)),
+            const SizedBox(width: 8),
+            Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFieldLabel(String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Text(
@@ -786,12 +946,108 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   bool _showMentions = false;
   bool _isSending = false;
   List<AppUser> _allUsers = [];
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+  
+  // Audio Recording State
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  bool _isRecording = false;
+  String? _audioPath;
 
   @override
   void initState() {
     super.initState();
     currentTask = widget.task;
     _commentController.addListener(_onCommentChanged);
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    _audioRecorder.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(
+      source: source,
+      imageQuality: 70,
+      maxWidth: 1200,
+      maxHeight: 1200,
+    );
+    if (image != null) {
+      setState(() => _selectedImage = File(image.path));
+    }
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      if (await _audioRecorder.hasPermission()) {
+        final directory = await getApplicationDocumentsDirectory();
+        final path = '${directory.path}/recording_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        
+        const config = RecordConfig();
+        await _audioRecorder.start(config, path: path);
+        
+        setState(() {
+          _isRecording = true;
+          _audioPath = path;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Recording started...'),
+              duration: Duration(seconds: 1),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Microphone permission is required to record voice notes.'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error starting recording: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start recording: $e'), behavior: SnackBarBehavior.floating),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    try {
+      final path = await _audioRecorder.stop();
+      setState(() {
+        _isRecording = false;
+        _audioPath = path;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recording saved!'),
+            duration: Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error stopping recording: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to stop recording: $e'), behavior: SnackBarBehavior.floating),
+        );
+      }
+    }
   }
 
   void _onCommentChanged() {
@@ -803,12 +1059,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     } else if (_showMentions && !text.contains('@')) {
       setState(() => _showMentions = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _commentController.dispose();
-    super.dispose();
   }
 
   @override
@@ -889,11 +1139,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       
                       // Status Toggle
                       Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: const BoxDecoration(
+                          color: Colors.transparent,
                         ),
                         child: StreamBuilder<DocumentSnapshot>(
                           stream: FirebaseFirestore.instance.collection('tasks').doc(currentTask.id).snapshots(),
@@ -1007,7 +1255,39 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                             ],
                                           ),
                                           const SizedBox(height: 6),
-                                          Text(c.text, style: GoogleFonts.inter(fontSize: 14, color: isDark ? Colors.grey[300] : Colors.black87, height: 1.4)),
+                                          if (c.text.isNotEmpty)
+                                            Text(c.text, style: GoogleFonts.inter(fontSize: 14, color: isDark ? Colors.grey[300] : Colors.black87, height: 1.4)),
+                                          
+                                          if (c.imageUrl != null) ...[
+                                            const SizedBox(height: 10),
+                                            GestureDetector(
+                                              onTap: () => _viewImage(c.imageUrl!),
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(12),
+                                                child: Image.network(
+                                                  c.imageUrl!,
+                                                  height: 200,
+                                                  width: double.infinity,
+                                                  fit: BoxFit.cover,
+                                                  loadingBuilder: (context, child, loadingProgress) {
+                                                    if (loadingProgress == null) return child;
+                                                    return Container(
+                                                      height: 200,
+                                                      width: double.infinity,
+                                                      color: Colors.grey.withOpacity(0.1),
+                                                      child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+
+                                          if (c.audioUrl != null) ...[
+                                            const SizedBox(height: 10),
+                                            VoiceMessagePlayer(url: c.audioUrl!),
+                                          ],
+
                                         ],
                                       ),
                                     ),
@@ -1018,6 +1298,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           );
                         }
                       ),
+
                     ],
                   ),
                 ),
@@ -1030,95 +1311,251 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   color: isDark ? Colors.black : Colors.white,
                   border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05))),
                 ),
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _commentController,
-                          style: GoogleFonts.inter(),
-                          decoration: InputDecoration(
-                            hintText: 'Add a comment...',
-                            hintStyle: GoogleFonts.inter(color: Colors.grey),
-                            filled: true,
-                            fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          ),
+                    if (_selectedImage != null || _audioPath != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Column(
+                          children: [
+                            if (_selectedImage != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Image.file(_selectedImage!, height: 120, width: double.infinity, fit: BoxFit.cover),
+                                    ),
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: GestureDetector(
+                                        onTap: () => setState(() => _selectedImage = null),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                                          child: const Icon(Icons.close, color: Colors.white, size: 16),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            if (_audioPath != null)
+                              Stack(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF6C63FF).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.mic_rounded, color: Color(0xFF6C63FF)),
+                                        const SizedBox(width: 12),
+                                        Text('Voice Note Recorded', style: GoogleFonts.inter(color: const Color(0xFF6C63FF), fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: GestureDetector(
+                                      onTap: () => setState(() => _audioPath = null),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                                        child: const Icon(Icons.close, color: Colors.white, size: 14),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: _isSending ? null : () async {
-                          final text = _commentController.text.trim();
-                          if (text.isNotEmpty && user != null) {
-                            setState(() => _isSending = true);
-                            try {
-                              final comment = CommentModel(
-                                uid: user.uid,
-                                userName: user.displayName ?? 'Unknown',
-                                userPhoto: user.photoURL ?? '',
-                                text: text,
-                                timestamp: DateTime.now(),
-                              );
-                              final recipient = user.uid == currentTask.assignedTo ? currentTask.assignedBy : currentTask.assignedTo;
-                              await dbService.addComment(currentTask.id, comment, recipient, currentTask.title);
-                              _commentController.clear();
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Comment posted! 💬'),
-                                    behavior: SnackBarBehavior.floating,
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            } finally {
-                              if (mounted) setState(() => _isSending = false);
+                    Row(
+                      children: [
+                        _commentActionButton(
+                          _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded, 
+                          () {
+                            if (_isRecording) {
+                              _stopRecording();
+                            } else {
+                              _startRecording();
                             }
-                          }
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: _isSending 
-                                ? [Colors.grey, Colors.grey.shade600]
-                                : [const Color(0xFF6C63FF), const Color(0xFF3B33FF)]
+                          },
+                          color: _isRecording ? Colors.red : null,
+                        ),
+                        const SizedBox(width: 8),
+                        _commentActionButton(Icons.camera_alt_rounded, () => _pickImage(ImageSource.camera)),
+                        const SizedBox(width: 8),
+                        _commentActionButton(Icons.photo_library_rounded, () => _pickImage(ImageSource.gallery)),
+                        const SizedBox(width: 12),
+
+                        Expanded(
+                          child: TextField(
+                            controller: _commentController,
+                            style: GoogleFonts.inter(),
+                            decoration: InputDecoration(
+                              hintText: 'Add a comment...',
+                              hintStyle: GoogleFonts.inter(color: Colors.grey),
+                              filled: true,
+                              fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                             ),
                           ),
-                          child: _isSending 
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: _isSending ? null : () async {
+                            final text = _commentController.text.trim();
+                            if ((text.isNotEmpty || _selectedImage != null || _audioPath != null) && user != null) {
+                              setState(() => _isSending = true);
+                              try {
+                                String? imageUrl;
+                                if (_selectedImage != null && await _selectedImage!.exists()) {
+                                  imageUrl = await dbService.uploadCommentImage(currentTask.id, _selectedImage!);
+                                }
+                                
+                                String? audioUrl;
+                                if (_audioPath != null && await File(_audioPath!).exists()) {
+                                  audioUrl = await dbService.uploadCommentAudio(currentTask.id, File(_audioPath!));
+                                }
+
+                                final comment = CommentModel(
+                                  uid: user.uid,
+                                  userName: user.displayName ?? 'Unknown',
+                                  userPhoto: user.photoURL ?? '',
+                                  text: text,
+                                  imageUrl: imageUrl,
+                                  audioUrl: audioUrl,
+                                  timestamp: DateTime.now(),
+                                );
+                                final recipient = user.uid == currentTask.assignedTo ? currentTask.assignedBy : currentTask.assignedTo;
+                                await dbService.addComment(currentTask.id, comment, recipient, currentTask.title);
+                                
+                                _commentController.clear();
+                                setState(() {
+                                  _selectedImage = null;
+                                  _audioPath = null;
+                                });
+                                
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Comment posted! 💬'),
+                                      behavior: SnackBarBehavior.floating,
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Failed to send: $e'),
+                                      backgroundColor: Colors.redAccent,
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) setState(() => _isSending = false);
+                              }
+                            }
+                          },
+
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                colors: _isSending 
+                                  ? [Colors.grey, Colors.grey.shade600]
+                                  : [const Color(0xFF6C63FF), const Color(0xFF3B33FF)]
+                              ),
+                            ),
+                            child: _isSending 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
+              ),
+
         ],
       ),
     );
   }
 
-  Widget _infoCard(BuildContext context, IconData icon, String label, String value) {
+  Widget _commentActionButton(IconData icon, VoidCallback onTap, {Color? color}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 20, color: color ?? Colors.grey),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: const Color(0xFF6C63FF)),
-          const SizedBox(height: 12),
-          Text(label, style: GoogleFonts.inter(fontSize: 12, color: Colors.grey)),
-          Text(value, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold)),
-        ],
+    );
+  }
+
+
+  void _viewImage(String url) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              child: Image.network(url, fit: BoxFit.contain),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _infoCard(BuildContext context, IconData icon, String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18, color: const Color(0xFF6C63FF)),
+            const SizedBox(width: 8),
+            Text(label, style: GoogleFonts.inter(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.only(left: 26),
+          child: Text(value, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 
@@ -1462,7 +1899,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             // Compact Header
             Container(
-              height: 200,
+              padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
               width: double.infinity,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -1474,7 +1911,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
                   GestureDetector(
                     onTap: _pickImage,
                     child: Stack(
@@ -1513,6 +1950,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     userData.designation,
                     style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withOpacity(0.8)),
                   ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -1633,3 +2071,105 @@ class _DetailItem extends StatelessWidget {
     );
   }
 }
+
+class VoiceMessagePlayer extends StatefulWidget {
+  final String url;
+  const VoiceMessagePlayer({super.key, required this.url});
+
+  @override
+  State<VoiceMessagePlayer> createState() => _VoiceMessagePlayerState();
+}
+
+class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _isPlaying = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onDurationChanged.listen((d) => setState(() => _duration = d));
+    _player.onPositionChanged.listen((p) => setState(() => _position = p));
+    _player.onPlayerComplete.listen((_) => setState(() => _isPlaying = false));
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6C63FF).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(_isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+            color: const Color(0xFF6C63FF),
+            iconSize: 32,
+            padding: EdgeInsets.zero,
+            onPressed: () async {
+              if (_isPlaying) {
+                await _player.pause();
+              } else {
+                await _player.play(UrlSource(widget.url));
+              }
+              setState(() => _isPlaying = !_isPlaying);
+            },
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 120,
+                height: 12,
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                    activeTrackColor: const Color(0xFF6C63FF),
+                    inactiveTrackColor: const Color(0xFF6C63FF).withOpacity(0.2),
+                    thumbColor: const Color(0xFF6C63FF),
+                  ),
+                  child: Slider(
+                    value: _position.inSeconds.toDouble(),
+                    max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
+                    onChanged: (val) async {
+                      await _player.seek(Duration(seconds: val.toInt()));
+                    },
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: Text(
+                  '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                  style: GoogleFonts.inter(fontSize: 9, color: const Color(0xFF6C63FF), fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+}
+

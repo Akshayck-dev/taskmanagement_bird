@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/app_models.dart';
 import 'fcm_v1_service.dart';
+import 'supabase_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -111,6 +112,10 @@ class AuthService {
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "taskmanagment-d25b4.appspot.com");
+
+  User? get user => _auth.currentUser;
 
   // Stream of tasks assigned to or by the user
   Future<TaskModel?> getTaskById(String taskId) async {
@@ -176,17 +181,17 @@ class DatabaseService {
   Future<void> createTask(TaskModel task) async {
     final docRef = await _db.collection('tasks').add(task.toMap());
     
-    // Send Notification to assigned user
+    // Send Notification to assigned user (Background)
     final data = {'type': 'NEW_TASK', 'taskId': docRef.id};
-    await FcmV1Service.sendNotification(
+    FcmV1Service.sendNotification(
       recipientUid: task.assignedTo,
       title: 'New Task Assigned 📝',
       body: 'You have been assigned: ${task.title}',
       data: data,
     );
 
-    // Save Notification for assigned user
-    await saveNotification(
+    // Save Notification for assigned user (Background)
+    saveNotification(
       recipientUid: task.assignedTo,
       title: 'New Task Assigned 📋',
       body: '${user?.displayName ?? "Someone"} assigned: ${task.title}',
@@ -202,18 +207,18 @@ class DatabaseService {
     await _db.collection('tasks').doc(taskId).update({'isDone': isDone});
     final user = _auth.currentUser;
 
-    // If task is marked as done, notify the creator
+    // If task is marked as done, notify the creator (Background)
     if (isDone && taskTitle != null && assignedBy != null) {
       final data = {'type': 'TASK_COMPLETED', 'taskId': taskId};
-      await FcmV1Service.sendNotification(
+      FcmV1Service.sendNotification(
         recipientUid: assignedBy,
         title: 'Task Completed! ✅',
         body: '"$taskTitle" has been completed.',
         data: data,
       );
 
-      // Save Notification for the person who assigned the task
-      await saveNotification(
+      // Save Notification for the person who assigned the task (Background)
+      saveNotification(
         recipientUid: assignedBy,
         title: isDone ? 'Task Completed! ✅' : 'Task Reopened 🔄',
         body: '"$taskTitle" has been ${isDone ? 'completed' : 'reopened'}.',
@@ -314,8 +319,22 @@ class DatabaseService {
   }
 
   Future<String> uploadProfileImage(String uid, File imageFile) async {
-    final storageRef = FirebaseStorage.instance.ref().child('user_profiles').child('$uid.jpg');
-    final uploadTask = await storageRef.putFile(imageFile);
-    return await uploadTask.ref.getDownloadURL();
+    return await SupabaseService.uploadFile('profiles', imageFile);
+  }
+
+  Future<String> uploadCommentImage(String taskId, File imageFile) async {
+    return await SupabaseService.uploadFile('comments/$taskId', imageFile);
+  }
+
+  Future<String> uploadCommentAudio(String taskId, File audioFile) async {
+    return await SupabaseService.uploadFile('comments/$taskId/audio', audioFile);
+  }
+
+  Future<String> uploadTaskImage(File imageFile) async {
+    return await SupabaseService.uploadFile('tasks', imageFile);
+  }
+
+  Future<String> uploadTaskAudio(File audioFile) async {
+    return await SupabaseService.uploadFile('tasks/audio', audioFile);
   }
 }

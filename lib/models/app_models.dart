@@ -45,6 +45,8 @@ class CommentModel {
   final String userName;
   final String userPhoto;
   final String text;
+  final String? imageUrl;
+  final String? audioUrl;
   final DateTime timestamp;
 
   CommentModel({
@@ -52,6 +54,8 @@ class CommentModel {
     required this.userName,
     required this.userPhoto,
     required this.text,
+    this.imageUrl,
+    this.audioUrl,
     required this.timestamp,
   });
 
@@ -61,6 +65,8 @@ class CommentModel {
       userName: map['userName'] ?? '',
       userPhoto: map['userPhoto'] ?? '',
       text: map['text'] ?? '',
+      imageUrl: map['imageUrl'],
+      audioUrl: map['audioUrl'],
       timestamp: (map['timestamp'] as Timestamp).toDate(),
     );
   }
@@ -71,10 +77,14 @@ class CommentModel {
       'userName': userName,
       'userPhoto': userPhoto,
       'text': text,
+      'imageUrl': imageUrl,
+      'audioUrl': audioUrl,
       'timestamp': Timestamp.fromDate(timestamp),
     };
   }
 }
+
+
 
 class TaskModel {
   final String id;
@@ -87,6 +97,8 @@ class TaskModel {
   final DateTime createdAt;
   final String category;
   final String priority;
+  final String? imageUrl;
+  final String? audioUrl;
   final List<CommentModel> comments;
 
   TaskModel({
@@ -100,6 +112,8 @@ class TaskModel {
     required this.createdAt,
     this.category = 'General',
     this.priority = 'Medium',
+    this.imageUrl,
+    this.audioUrl,
     this.comments = const [],
   });
 
@@ -116,6 +130,8 @@ class TaskModel {
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       category: data['category'] ?? 'General',
       priority: data['priority'] ?? 'Medium',
+      imageUrl: data['imageUrl'],
+      audioUrl: data['audioUrl'],
       comments: (data['comments'] as List? ?? [])
           .map((c) => CommentModel.fromMap(c as Map<String, dynamic>))
           .toList(),
@@ -133,6 +149,8 @@ class TaskModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'category': category,
       'priority': priority,
+      'imageUrl': imageUrl,
+      'audioUrl': audioUrl,
       'comments': comments.map((c) => c.toMap()).toList(),
     };
   }
