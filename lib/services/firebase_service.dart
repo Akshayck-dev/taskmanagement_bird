@@ -204,7 +204,10 @@ class DatabaseService {
   }
 
   Future<void> updateTaskStatus(String taskId, bool isDone, {String? taskTitle, String? assignedBy}) async {
-    await _db.collection('tasks').doc(taskId).update({'isDone': isDone});
+    await _db.collection('tasks').doc(taskId).update({
+      'isDone': isDone,
+      'statusUpdatedAt': Timestamp.now(),
+    });
     final user = _auth.currentUser;
 
     // If task is marked as done, notify the creator (Background)
@@ -253,17 +256,17 @@ class DatabaseService {
       'comments': FieldValue.arrayUnion([comment.toMap()])
     });
 
-    // Notify the other party
+    // Notify the other party (Background)
     final data = {'taskId': taskId, 'type': 'COMMENT'};
-    await FcmV1Service.sendNotification(
+    FcmV1Service.sendNotification(
       recipientUid: recipientUid,
       title: 'New Comment 💬',
       body: '${comment.userName}: ${comment.text}',
       data: data,
     );
 
-    // Save Notification for the recipient
-    await saveNotification(
+    // Save Notification for the recipient (Background)
+    saveNotification(
       recipientUid: recipientUid,
       title: 'New Comment 💬',
       body: '${comment.userName}: ${comment.text}',

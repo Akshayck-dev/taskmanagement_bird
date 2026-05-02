@@ -16,15 +16,39 @@ class SupabaseService {
   static SupabaseClient get _client => Supabase.instance.client;
 
   static Future<String> uploadFile(String folder, File file) async {
-    final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
-    final path = '$folder/$fileName';
+    try {
+      print('--- SUPABASE UPLOAD START ---');
+      print('Folder: $folder');
+      print('File path: ${file.path}');
+      
+      if (!await file.exists()) {
+        print('Error: File does not exist at path ${file.path}');
+        throw Exception('File does not exist');
+      }
 
-    await _client.storage.from(_bucketName).upload(
-      path,
-      file,
-      fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
-    );
+      // Robust filename extraction
+      final originalName = file.path.split(RegExp(r'[/\\]')).last;
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_$originalName';
+      final path = '$folder/$fileName';
+      
+      print('Uploading to: $path');
 
-    return _client.storage.from(_bucketName).getPublicUrl(path);
+      await _client.storage.from(_bucketName).upload(
+        path,
+        file,
+        fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+      ).timeout(const Duration(seconds: 60), onTimeout: () {
+        print('Supabase upload timed out after 60s');
+        throw Exception('Upload timed out. Please check your internet connection.');
+      });
+
+      final publicUrl = _client.storage.from(_bucketName).getPublicUrl(path);
+      print('Upload successful! Public URL: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      print('--- SUPABASE UPLOAD ERROR ---');
+      print('Error: $e');
+      rethrow;
+    }
   }
 }

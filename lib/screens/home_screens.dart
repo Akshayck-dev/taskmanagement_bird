@@ -789,40 +789,59 @@ class CreateTaskBottomSheet extends StatefulWidget {
                   text: 'Create Task',
                   isLoading: _isLoading,
                   onPressed: () async {
-                    if (_titleController.text.isEmpty) {
+                    final title = _titleController.text.trim();
+                    final desc = _descController.text.trim();
+
+                    if (title.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Please enter a task title'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                        const SnackBar(content: Text('Please enter a task title 📝'), behavior: SnackBarBehavior.floating),
+                      );
+                      return;
+                    }
+                    if (desc.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please enter task details/description 📄'), behavior: SnackBarBehavior.floating),
                       );
                       return;
                     }
                     if (_selectedAssignee == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Please select an assignee'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                        const SnackBar(content: Text('Please assign this task to someone 👤'), behavior: SnackBarBehavior.floating),
                       );
                       return;
+                    }
+
+                    // Automatically stop recording if active
+                    if (_isRecording) {
+                      await _stopRecording();
                     }
 
                     setState(() => _isLoading = true);
                     try {
                       String? imageUrl;
                       String? audioUrl;
-                      if (_taskImage != null) {
-                        imageUrl = await dbService.uploadTaskImage(_taskImage!);
+
+                      // Run uploads in parallel
+                      final List<Future> uploads = [];
+                      if (_taskImage != null && await _taskImage!.exists()) {
+                        uploads.add(dbService.uploadTaskImage(_taskImage!).then((url) => imageUrl = url));
                       }
-                      if (_audioPath != null) {
-                        audioUrl = await dbService.uploadTaskAudio(File(_audioPath!));
+                      if (_audioPath != null && await File(_audioPath!).exists()) {
+                        uploads.add(dbService.uploadTaskAudio(File(_audioPath!)).then((url) => audioUrl = url));
+                      }
+
+                      if (uploads.isNotEmpty) {
+                        try {
+                          await Future.wait(uploads).timeout(const Duration(seconds: 60));
+                        } catch (e) {
+                          throw Exception('File upload timed out. Please check your connection.');
+                        }
                       }
 
                       await dbService.createTask(TaskModel(
                         id: '',
-                        title: _titleController.text,
-                        description: _descController.text,
+                        title: title,
+                        description: desc,
                         assignedTo: _selectedAssignee!,
                         assignedBy: widget.currentUserId,
                         isDone: false,
@@ -1066,435 +1085,582 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final user = Provider.of<User?>(context);
     final dbService = DatabaseService();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = const Color(0xFF6C63FF);
+    final bgColor = isDark ? const Color(0xFF0D1117) : Colors.grey[50];
+    final cardColor = isDark ? const Color(0xFF161B22) : Colors.white;
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.grey[50],
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text('Task Detail', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+        title: Text('Task Detail', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: isDark ? Colors.white : Colors.black87),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+          if (FirebaseAuth.instance.currentUser?.uid == currentTask.assignedBy)
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: isDark ? Colors.white : Colors.black87),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              onSelected: (value) async {
+                if (value == 'delete') {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Delete Task?'),
+                      content: const Text('Are you sure you want to permanently delete this task?'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await DatabaseService().deleteTask(currentTask.id);
+                    if (context.mounted) Navigator.pop(context);
+                  }
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_outlined, size: 20), SizedBox(width: 12), Text('Edit Task')])),
+                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, size: 20, color: Colors.red), SizedBox(width: 12), Text('Delete Task', style: TextStyle(color: Colors.red))])),
+              ],
+            ),
+        ],
       ),
       body: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 10),
-                      // Priority Badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+                  
+                  // Status Card
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('tasks').doc(currentTask.id).snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
+                      final liveTask = TaskModel.fromFirestore(snapshot.data!);
+                      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                      final bool canChangeStatus = currentUid != null && currentUid == liveTask.assignedTo;
+
+                      return Container(
+                        padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: _getPriorityColor(currentTask.priority).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
                         ),
-                        child: Text(
-                          currentTask.priority.toUpperCase(),
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            color: _getPriorityColor(currentTask.priority),
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Hero(
-                        tag: 'task_title_${currentTask.id}',
-                        child: Material(
-                          color: Colors.transparent,
-                          child: Text(
-                            currentTask.title, 
-                            style: GoogleFonts.inter(
-                              fontSize: 32, 
-                              fontWeight: FontWeight.w800,
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        currentTask.description, 
-                        style: GoogleFonts.inter(
-                          fontSize: 16, 
-                          color: Colors.grey[500], 
-                          height: 1.6,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      
-                      // Details Grid
-                      Row(
-                        children: [
-                          Expanded(child: _infoCard(context, Icons.calendar_today_rounded, 'Due Date', DateFormat('MMM d, yyyy').format(currentTask.deadline))),
-                          const SizedBox(width: 16),
-                          Expanded(child: _infoCard(context, Icons.category_outlined, 'Category', currentTask.category)),
-                        ],
-                      ),
-                      const SizedBox(height: 32),
-                      
-                      // Status Toggle
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: const BoxDecoration(
-                          color: Colors.transparent,
-                        ),
-                        child: StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance.collection('tasks').doc(currentTask.id).snapshots(),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData || !snapshot.data!.exists) {
-                              return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)));
-                            }
-                            
-                            final liveTask = TaskModel.fromFirestore(snapshot.data!);
-                            final currentUid = FirebaseAuth.instance.currentUser?.uid;
-                            // SWAPPED LOGIC: Only the person it is assigned TO can change the status
-                            final bool canChangeStatus = currentUid != null && currentUid == liveTask.assignedTo;
-
-                            return Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Task Status', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
-                                    Text(liveTask.isDone ? 'Completed' : 'In Progress', style: GoogleFonts.inter(fontSize: 12, color: Colors.grey)),
-                                  ],
-                                ),
-                                if (canChangeStatus)
-                                  Switch(
-                                    value: liveTask.isDone, 
-                                    onChanged: (val) {
-                                      dbService.updateTaskStatus(liveTask.id, val, taskTitle: liveTask.title, assignedBy: liveTask.assignedBy);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(val ? 'Task completed! 🎉' : 'Task reopened 🔄'),
-                                          behavior: SnackBarBehavior.floating,
-                                          duration: const Duration(seconds: 2),
-                                        ),
-                                      );
-                                    }, 
-                                    activeColor: const Color(0xFF6C63FF),
-                                  )
-                                else
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      'View Only',
-                                      style: GoogleFonts.inter(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          }
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 40),
-                      Text('Comments', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 16),
-                      
-                      StreamBuilder<DocumentSnapshot>(
-                        stream: FirebaseFirestore.instance.collection('tasks').doc(currentTask.id).snapshots(),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) return const SizedBox();
-                          final taskData = TaskModel.fromFirestore(snapshot.data!);
-                          final comments = taskData.comments;
-
-                          if (comments.isEmpty) {
-                            return Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 40.0),
-                                child: Column(
-                                  children: [
-                                    Icon(Icons.forum_outlined, size: 48, color: Colors.grey[300]),
-                                    const SizedBox(height: 12),
-                                    Text('No comments yet', style: GoogleFonts.inter(color: Colors.grey)),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }
-
-                          return ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: comments.length,
-                            itemBuilder: (context, index) {
-                              final c = comments[index];
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 16),
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    CircleAvatar(radius: 20, backgroundImage: NetworkImage(c.userPhoto)),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(c.userName, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
-                                              Text(DateFormat('hh:mm a').format(c.timestamp), style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 6),
-                                          if (c.text.isNotEmpty)
-                                            Text(c.text, style: GoogleFonts.inter(fontSize: 14, color: isDark ? Colors.grey[300] : Colors.black87, height: 1.4)),
-                                          
-                                          if (c.imageUrl != null) ...[
-                                            const SizedBox(height: 10),
-                                            GestureDetector(
-                                              onTap: () => _viewImage(c.imageUrl!),
-                                              child: ClipRRect(
-                                                borderRadius: BorderRadius.circular(12),
-                                                child: Image.network(
-                                                  c.imageUrl!,
-                                                  height: 200,
-                                                  width: double.infinity,
-                                                  fit: BoxFit.cover,
-                                                  loadingBuilder: (context, child, loadingProgress) {
-                                                    if (loadingProgress == null) return child;
-                                                    return Container(
-                                                      height: 200,
-                                                      width: double.infinity,
-                                                      color: Colors.grey.withOpacity(0.1),
-                                                      child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                                    );
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-
-                                          if (c.audioUrl != null) ...[
-                                            const SizedBox(height: 10),
-                                            VoiceMessagePlayer(url: c.audioUrl!),
-                                          ],
-
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                        }
-                      ),
-
-                    ],
-                  ),
-                ),
-              ),
-              
-              // Comment Input Field
-              Container(
-                padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(context).viewInsets.bottom > 0 ? 16 : (MediaQuery.of(context).padding.bottom + 16)),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.black : Colors.white,
-                  border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05))),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_selectedImage != null || _audioPath != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Column(
+                        child: Row(
                           children: [
-                            if (_selectedImage != null)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8.0),
-                                child: Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Image.file(_selectedImage!, height: 120, width: double.infinity, fit: BoxFit.cover),
-                                    ),
-                                    Positioned(
-                                      top: 8,
-                                      right: 8,
-                                      child: GestureDetector(
-                                        onTap: () => setState(() => _selectedImage = null),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                                          child: const Icon(Icons.close, color: Colors.white, size: 16),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                            Container(
+                              width: 48,
+                              height: 48,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: primaryColor.withOpacity(0.1),
+                                shape: BoxShape.circle,
                               ),
-                            if (_audioPath != null)
-                              Stack(
+                              child: CircularProgressIndicator(
+                                value: liveTask.isDone ? 1.0 : 0.4,
+                                strokeWidth: 3,
+                                backgroundColor: primaryColor.withOpacity(0.2),
+                                valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF6C63FF).withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.mic_rounded, color: Color(0xFF6C63FF)),
-                                        const SizedBox(width: 12),
-                                        Text('Voice Note Recorded', style: GoogleFonts.inter(color: const Color(0xFF6C63FF), fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 8,
-                                    right: 8,
-                                    child: GestureDetector(
-                                      onTap: () => setState(() => _audioPath = null),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                                        child: const Icon(Icons.close, color: Colors.white, size: 14),
-                                      ),
-                                    ),
+                                  Text('Task Status', style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w600)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    liveTask.isDone ? 'Completed' : 'In Progress', 
+                                    style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: liveTask.isDone ? Colors.green : primaryColor)
                                   ),
                                 ],
                               ),
+                            ),
+                            if (canChangeStatus)
+                              Switch(
+                                value: liveTask.isDone, 
+                                activeColor: Colors.green,
+                                trackColor: WidgetStateProperty.resolveWith((states) => 
+                                  states.contains(WidgetState.selected) ? Colors.green : Colors.grey[isDark ? 800 : 300]),
+                                onChanged: (val) {
+                                  if (val) {
+                                    final bool hasRecentComment = liveTask.comments.any((c) => 
+                                      liveTask.statusUpdatedAt == null || 
+                                      c.timestamp.isAfter(liveTask.statusUpdatedAt!)
+                                    );
+
+                                    if (!hasRecentComment) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Please add a fresh comment/proof before completing! 💬'),
+                                          behavior: SnackBarBehavior.floating,
+                                          backgroundColor: Colors.orangeAccent,
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                  }
+                                  
+                                  dbService.updateTaskStatus(liveTask.id, val, taskTitle: liveTask.title, assignedBy: liveTask.assignedBy);
+                                  HapticFeedback.mediumImpact();
+                                }, 
+                              ),
                           ],
                         ),
+                      );
+                    }
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Title & Description
+                  Hero(
+                    tag: 'task_title_${currentTask.id}',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Text(
+                        currentTask.title, 
+                        style: GoogleFonts.inter(
+                          fontSize: 26, 
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? Colors.white : Colors.black87,
+                          height: 1.3,
+                        ),
                       ),
-                    Row(
-                      children: [
-                        _commentActionButton(
-                          _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded, 
-                          () {
-                            if (_isRecording) {
-                              _stopRecording();
-                            } else {
-                              _startRecording();
-                            }
-                          },
-                          color: _isRecording ? Colors.red : null,
-                        ),
-                        const SizedBox(width: 8),
-                        _commentActionButton(Icons.camera_alt_rounded, () => _pickImage(ImageSource.camera)),
-                        const SizedBox(width: 8),
-                        _commentActionButton(Icons.photo_library_rounded, () => _pickImage(ImageSource.gallery)),
-                        const SizedBox(width: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    currentTask.description.isNotEmpty ? currentTask.description : 'No description provided for this task.', 
+                    style: GoogleFonts.inter(
+                      fontSize: 16, 
+                      color: isDark ? Colors.grey[400] : Colors.grey[600], 
+                      height: 1.6,
+                      fontStyle: currentTask.description.isEmpty ? FontStyle.italic : FontStyle.normal,
+                    ),
+                  ),
 
-                        Expanded(
-                          child: TextField(
-                            controller: _commentController,
-                            style: GoogleFonts.inter(),
-                            decoration: InputDecoration(
-                              hintText: 'Add a comment...',
-                              hintStyle: GoogleFonts.inter(color: Colors.grey),
-                              filled: true,
-                              fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  const SizedBox(height: 32),
+
+                  // Assignment Info
+                  _assignmentTile(context, 'Assigned to', currentTask.assignedTo, isDark),
+
+                  const SizedBox(height: 40),
+
+                  // Task Attachments
+                  if (currentTask.imageUrl != null || currentTask.audioUrl != null) ...[
+                    Text('Task Attachments', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black87)),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF161B22) : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+                      ),
+                      child: Column(
+                        children: [
+                          if (currentTask.imageUrl != null)
+                            _attachmentItem(
+                              context, 
+                              Icons.image_outlined, 
+                              'Attachment_Image.png', 
+                              '2.4 MB • PNG', 
+                              currentTask.imageUrl!, 
+                              isDark
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        GestureDetector(
-                          onTap: _isSending ? null : () async {
-                            final text = _commentController.text.trim();
-                            if ((text.isNotEmpty || _selectedImage != null || _audioPath != null) && user != null) {
-                              setState(() => _isSending = true);
-                              try {
-                                String? imageUrl;
-                                if (_selectedImage != null && await _selectedImage!.exists()) {
-                                  imageUrl = await dbService.uploadCommentImage(currentTask.id, _selectedImage!);
-                                }
-                                
-                                String? audioUrl;
-                                if (_audioPath != null && await File(_audioPath!).exists()) {
-                                  audioUrl = await dbService.uploadCommentAudio(currentTask.id, File(_audioPath!));
-                                }
+                          
+                          if (currentTask.imageUrl != null && currentTask.audioUrl != null)
+                            Divider(height: 24, color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
 
-                                final comment = CommentModel(
-                                  uid: user.uid,
-                                  userName: user.displayName ?? 'Unknown',
-                                  userPhoto: user.photoURL ?? '',
-                                  text: text,
-                                  imageUrl: imageUrl,
-                                  audioUrl: audioUrl,
-                                  timestamp: DateTime.now(),
-                                );
-                                final recipient = user.uid == currentTask.assignedTo ? currentTask.assignedBy : currentTask.assignedTo;
-                                await dbService.addComment(currentTask.id, comment, recipient, currentTask.title);
-                                
-                                _commentController.clear();
-                                setState(() {
-                                  _selectedImage = null;
-                                  _audioPath = null;
-                                });
-                                
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Comment posted! 💬'),
-                                      behavior: SnackBarBehavior.floating,
-                                      duration: Duration(seconds: 2),
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Failed to send: $e'),
-                                      backgroundColor: Colors.redAccent,
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                }
-                              } finally {
-                                if (mounted) setState(() => _isSending = false);
-                              }
-                            }
-                          },
+                          if (currentTask.audioUrl != null)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: VoiceMessagePlayer(url: currentTask.audioUrl!),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
 
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.all(12),
+                  // Comments Section Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Text('Comments', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: isDark ? Colors.white : Colors.black87)),
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: _isSending 
-                                  ? [Colors.grey, Colors.grey.shade600]
-                                  : [const Color(0xFF6C63FF), const Color(0xFF3B33FF)]
-                              ),
+                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[200],
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: _isSending 
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                            child: StreamBuilder<DocumentSnapshot>(
+                              stream: FirebaseFirestore.instance.collection('tasks').doc(currentTask.id).snapshots(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData) return Text('0', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold));
+                                final task = TaskModel.fromFirestore(snapshot.data!);
+                                return Text('${task.comments.length}', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold));
+                              }
+                            ),
                           ),
-                        ),
+                        ],
+                      ),
+                      TextButton.icon(
+                        onPressed: () {},
+                        icon: Text('Newest', style: GoogleFonts.inter(color: Colors.grey, fontSize: 14)),
+                        label: const Icon(Icons.keyboard_arrow_down, color: Colors.grey, size: 18),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Comments List
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('tasks').doc(currentTask.id).snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const SizedBox();
+                      final taskData = TaskModel.fromFirestore(snapshot.data!);
+                      final comments = taskData.comments;
+
+                      if (comments.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 40.0),
+                            child: Column(
+                              children: [
+                                Icon(Icons.forum_outlined, size: 48, color: Colors.grey[300]),
+                                const SizedBox(height: 12),
+                                Text('No comments yet', style: GoogleFonts.inter(color: Colors.grey)),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: comments.length,
+                        itemBuilder: (context, index) {
+                          final c = comments[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 24),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 20, 
+                                  backgroundImage: NetworkImage(c.userPhoto),
+                                  backgroundColor: Colors.grey[200],
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Text(c.userName, style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14, color: isDark ? Colors.white : Colors.black87)),
+                                              const SizedBox(width: 8),
+                                              Text(DateFormat('hh:mm a').format(c.timestamp), style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
+                                            ],
+                                          ),
+                                          Icon(Icons.more_horiz, color: Colors.grey[400], size: 18),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      if (c.text.isNotEmpty)
+                                        Text(
+                                          c.text, 
+                                          style: GoogleFonts.inter(
+                                            fontSize: 14, 
+                                            color: isDark ? Colors.grey[300] : Colors.black87, 
+                                            height: 1.5
+                                          )
+                                        ),
+                                      
+                                      if (c.imageUrl != null) ...[
+                                        const SizedBox(height: 12),
+                                        GestureDetector(
+                                          onTap: () => _viewImage(c.imageUrl!),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(16),
+                                            child: Image.network(c.imageUrl!, width: double.infinity, height: 200, fit: BoxFit.cover),
+                                          ),
+                                        ),
+                                      ],
+
+                                      if (c.audioUrl != null) ...[
+                                        const SizedBox(height: 12),
+                                        VoiceMessagePlayer(url: c.audioUrl!),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+          
+          // Improved Comment Input Bar
+          Container(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0D1117) : Colors.white,
+              border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[200]!)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_selectedImage != null || _audioPath != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        if (_selectedImage != null)
+                          Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(_selectedImage!, height: 60, width: 60, fit: BoxFit.cover),
+                              ),
+                              Positioned(
+                                top: 0, right: 0,
+                                child: GestureDetector(
+                                  onTap: () => setState(() => _selectedImage = null),
+                                  child: Container(color: Colors.black54, child: const Icon(Icons.close, size: 14, color: Colors.white)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (_audioPath != null)
+                          Container(
+                            margin: const EdgeInsets.only(left: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.mic, size: 16, color: Color(0xFF6C63FF)),
+                                const SizedBox(width: 8),
+                                Text('Voice recorded', style: GoogleFonts.inter(fontSize: 12, color: primaryColor)),
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: () => setState(() => _audioPath = null),
+                                  child: const Icon(Icons.close, size: 14, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
+                  ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.add_circle_outline_rounded, color: Colors.grey[500]),
+                      onPressed: () => _pickImage(ImageSource.gallery),
+                    ),
+                    IconButton(
+                      icon: Icon(_isRecording ? Icons.stop_circle_rounded : Icons.mic_none_rounded, color: _isRecording ? Colors.red : Colors.grey[500]),
+                      onPressed: () => _isRecording ? _stopRecording() : _startRecording(),
+                    ),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: TextField(
+                          controller: _commentController,
+                          style: GoogleFonts.inter(fontSize: 14, color: isDark ? Colors.white : Colors.black87),
+                          decoration: InputDecoration(
+                            hintText: 'Add a comment...',
+                            hintStyle: GoogleFonts.inter(color: Colors.grey[500], fontSize: 14),
+                            border: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _isSending 
+                    ? const SizedBox(width: 44, height: 44, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2)))
+                    : CircleAvatar(
+                        backgroundColor: primaryColor,
+                        radius: 22,
+                        child: IconButton(
+                          icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                          onPressed: () => _submitComment(currentTask),
+                        ),
+                      ),
                   ],
                 ),
-              ),
-
+              ],
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _assignmentTile(BuildContext context, String label, String uid, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const SizedBox(height: 40);
+            final user = AppUser.fromMap(snapshot.data!.data() as Map<String, dynamic>);
+            return Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundImage: NetworkImage(user.photoUrl),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(user.name, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black87), overflow: TextOverflow.ellipsis),
+                      Text(user.designation, style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[500]), overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }
+        ),
+      ],
+    );
+  }
+
+  Widget _attachmentItem(BuildContext context, IconData icon, String name, String size, String url, bool isDark) {
+    return InkWell(
+      onTap: () => _viewImage(url),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF6C63FF).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: const Color(0xFF6C63FF), size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black87)),
+                  Text(size, style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[500])),
+                ],
+              ),
+            ),
+            Icon(Icons.download_rounded, color: Colors.grey[400], size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitComment(TaskModel currentTask) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final dbService = DatabaseService();
+    final text = _commentController.text.trim();
+    
+    if ((text.isNotEmpty || _selectedImage != null || _audioPath != null) && user != null) {
+      setState(() => _isSending = true);
+      try {
+        String? imageUrl;
+        String? audioUrl;
+
+        final List<Future> uploads = [];
+        if (_selectedImage != null && await _selectedImage!.exists()) {
+          uploads.add(dbService.uploadCommentImage(currentTask.id, _selectedImage!).then((url) => imageUrl = url));
+        }
+        if (_audioPath != null && await File(_audioPath!).exists()) {
+          uploads.add(dbService.uploadCommentAudio(currentTask.id, File(_audioPath!)).then((url) => audioUrl = url));
+        }
+
+        if (uploads.isNotEmpty) {
+          try {
+            await Future.wait(uploads).timeout(const Duration(seconds: 60));
+          } catch (e) {
+            throw Exception('File upload timed out. Please check your connection.');
+          }
+        }
+
+        final comment = CommentModel(
+          uid: user.uid,
+          userName: user.displayName ?? 'Unknown',
+          userPhoto: user.photoURL ?? '',
+          text: text,
+          imageUrl: imageUrl,
+          audioUrl: audioUrl,
+          timestamp: DateTime.now(),
+        );
+
+        final recipient = user.uid == currentTask.assignedTo ? currentTask.assignedBy : currentTask.assignedTo;
+        await dbService.addComment(currentTask.id, comment, recipient, currentTask.title);
+        
+        _commentController.clear();
+        setState(() {
+          _selectedImage = null;
+          _audioPath = null;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Comment posted! 💬'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to send: $e'), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isSending = false);
+      }
+    }
   }
 
   Widget _commentActionButton(IconData icon, VoidCallback onTap, {Color? color}) {
