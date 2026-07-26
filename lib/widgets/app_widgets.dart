@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
-class PrimaryButton extends StatelessWidget {
+class PrimaryButton extends StatefulWidget {
   final String text;
   final VoidCallback onPressed;
   final List<Color>? gradientColors;
@@ -20,64 +20,112 @@ class PrimaryButton extends StatelessWidget {
   });
 
   @override
+  State<PrimaryButton> createState() => _PrimaryButtonState();
+}
+
+class _PrimaryButtonState extends State<PrimaryButton> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 58,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: gradientColors ?? [const Color(0xFF6C63FF), const Color(0xFF3B33FF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: (gradientColors?.first ?? const Color(0xFF6C63FF)).withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final isWhiteBtn = widget.gradientColors != null && widget.gradientColors!.first == Colors.white;
+
+    final bgColor = isWhiteBtn
+        ? (isDark ? const Color(0xFF1E1E24) : Colors.white)
+        : primaryColor;
+    final strokeColor = isWhiteBtn
+        ? (isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.08))
+        : Colors.transparent;
+    final textCol = widget.textColor ?? (isWhiteBtn ? (isDark ? Colors.white : Colors.black87) : Colors.white);
+
+    return AnimatedBuilder(
+      animation: _scaleAnimation,
+      builder: (context, child) => Transform.scale(
+        scale: _scaleAnimation.value,
+        child: child,
       ),
-      child: ElevatedButton(
-        onPressed: isLoading ? null : onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          foregroundColor: textColor ?? Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+      child: GestureDetector(
+        onTapDown: (_) => widget.isLoading ? null : _controller.forward(),
+        onTapUp: (_) {
+          _controller.reverse();
+          widget.onPressed();
+        },
+        onTapCancel: () => _controller.reverse(),
+        child: Container(
+          width: double.infinity,
+          height: 54,
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: strokeColor, width: 1),
+            boxShadow: [
+              if (!isWhiteBtn)
+                BoxShadow(
+                  color: primaryColor.withOpacity(0.15),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                )
+              else if (!isDark)
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                )
+            ],
           ),
-        ),
-        child: isLoading
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 3,
-                ),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (icon != null) ...[
-                    icon!,
-                    const SizedBox(width: 10),
-                  ],
-                  Flexible(
-                    child: Text(
-                      text,
-                      style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+          alignment: Alignment.center,
+          child: widget.isLoading
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: textCol,
+                    strokeWidth: 2.5,
                   ),
-                ],
-              ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (widget.icon != null) ...[
+                      widget.icon!,
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        widget.text,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: textCol,
+                          letterSpacing: -0.2,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -141,7 +189,7 @@ class StatCard extends StatelessWidget {
             children: [
               Text(
                 count,
-                style: GoogleFonts.inter(
+                style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
@@ -149,7 +197,7 @@ class StatCard extends StatelessWidget {
               ),
               Text(
                 title,
-                style: GoogleFonts.inter(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   color: Colors.white.withOpacity(0.8),
@@ -277,7 +325,7 @@ class TaskItem extends StatelessWidget {
                           Expanded(
                             child: Text(
                               title,
-                              style: GoogleFonts.inter(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 decoration: isDone ? TextDecoration.lineThrough : null,
@@ -294,7 +342,7 @@ class TaskItem extends StatelessWidget {
                         children: [
                           Text(
                             subtitle,
-                            style: GoogleFonts.inter(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                               color: isOverdue && !isDone ? Colors.redAccent : Colors.grey[500],
@@ -303,7 +351,7 @@ class TaskItem extends StatelessWidget {
                           const SizedBox(width: 8),
                           Text(
                             "•  $category",
-                            style: GoogleFonts.inter(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                               color: Colors.grey[500],
@@ -323,7 +371,7 @@ class TaskItem extends StatelessWidget {
                     CircleAvatar(
                       radius: 18,
                       backgroundColor: Colors.grey[800],
-                      backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                      backgroundImage: photoUrl.isNotEmpty ? CachedNetworkImageProvider(photoUrl) : null,
                       child: photoUrl.isEmpty ? const Icon(Icons.person, size: 20) : null,
                     ),
                     Positioned(

@@ -6,6 +6,7 @@ import 'dart:io';
 import '../main.dart';
 import '../models/app_models.dart';
 import '../screens/home_screens.dart';
+import "../screens/task_detail_screen.dart";
 
 class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;

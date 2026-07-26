@@ -93,7 +93,7 @@ class AuthService {
           'uid': user.uid,
           'name': name,
           'email': email,
-          'photoUrl': 'https://ui-avatars.com/api/?name=$name&background=random',
+          'photoUrl': 'https://api.dicebear.com/7.x/initials/png?seed=$name',
           'lastSeen': DateTime.now().toIso8601String(),
         }, SetOptions(merge: true));
       }
@@ -179,7 +179,10 @@ class DatabaseService {
   }
 
   Future<void> createTask(TaskModel task) async {
-    final docRef = await _db.collection('tasks').add(task.toMap());
+    final docRef = await _db.collection('tasks').add(task.toMap()).timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => throw Exception('Could not connect to database. Did you create a Firestore Database in the Firebase Console?'),
+    );
     
     // Send Notification to assigned user (Background)
     final data = {'type': 'NEW_TASK', 'taskId': docRef.id};
@@ -201,6 +204,21 @@ class DatabaseService {
         'taskId': docRef.id,
       },
     );
+  }
+
+  Future<void> updateTaskDetails(String taskId, String title, String description, String category, String priority, DateTime deadline, {String? imageUrl, String? audioUrl}) async {
+    final Map<String, dynamic> updateData = {
+      'title': title,
+      'description': description,
+      'category': category,
+      'priority': priority,
+      'deadline': Timestamp.fromDate(deadline),
+      'updatedAt': Timestamp.now(),
+    };
+    if (imageUrl != null) updateData['imageUrl'] = imageUrl;
+    if (audioUrl != null) updateData['audioUrl'] = audioUrl;
+
+    await _db.collection('tasks').doc(taskId).update(updateData);
   }
 
   Future<void> updateTaskStatus(String taskId, bool isDone, {String? taskTitle, String? assignedBy}) async {

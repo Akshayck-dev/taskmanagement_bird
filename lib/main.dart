@@ -11,6 +11,7 @@ import 'services/theme_provider.dart';
 import 'screens/auth_screens.dart';
 import 'screens/home_screens.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'services/supabase_service.dart';
 
 @pragma('vm:entry-point')
@@ -24,6 +25,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(); 
+  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
   await SupabaseService.initialize();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   
@@ -35,12 +37,10 @@ void main() async {
   ));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   
-  // Add dummy users for testing purposes
-  try {
-    await DatabaseService().addDummyUsers();
-  } catch (e) {
+  // Add dummy users for testing purposes without blocking app launch
+  DatabaseService().addDummyUsers().catchError((e) {
     print('Failed to add dummy users: $e');
-  }
+  });
   
   runApp(const TaskFlowApp());
 }
@@ -67,30 +67,35 @@ class TaskFlowApp extends StatelessWidget {
             themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
             navigatorKey: navigatorKey,
             theme: ThemeData(
+              fontFamily: '.SF Pro Display', // Fallback to system native on iOS
               colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF6C63FF),
-                primary: const Color(0xFF6C63FF),
-                surface: const Color(0xFFF7F8FA),
+                seedColor: const Color(0xFF5B5BF7),
+                primary: const Color(0xFF5B5BF7),
+                secondary: const Color(0xFF5B5BF7),
+                surface: const Color(0xFFFFFFFF),
+                background: const Color(0xFFFFFFFF),
+                onBackground: const Color(0xFF1A1A1A),
+                onSurface: const Color(0xFF1A1A1A),
               ),
               useMaterial3: true,
-              textTheme: GoogleFonts.interTextTheme(),
-              scaffoldBackgroundColor: const Color(0xFFF7F8FA),
+              scaffoldBackgroundColor: const Color(0xFFFFFFFF),
+              dividerColor: const Color(0xFFECECEC),
             ),
             darkTheme: ThemeData(
               brightness: Brightness.dark,
-              scaffoldBackgroundColor: Colors.black,
+              fontFamily: '.SF Pro Display',
+              scaffoldBackgroundColor: const Color(0xFF0A0A0C),
               colorScheme: const ColorScheme.dark(
-                primary: Color(0xFF6C63FF),
-                secondary: Color(0xFF3B33FF),
-                surface: Color(0xFF121212),
-                background: Colors.black,
+                primary: Color(0xFF5B5BF7),
+                secondary: Color(0xFF5B5BF7),
+                surface: Color(0xFF16161A),
+                background: Color(0xFF0A0A0C),
+                onBackground: Colors.white,
+                onSurface: Colors.white,
               ),
-              cardColor: const Color(0xFF1E1E1E),
+              dividerColor: const Color(0xFF2C2C2E),
+              cardColor: const Color(0xFF16161A),
               useMaterial3: true,
-              textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).apply(
-                bodyColor: Colors.white,
-                displayColor: Colors.white,
-              ),
             ),
             initialRoute: '/',
             routes: {

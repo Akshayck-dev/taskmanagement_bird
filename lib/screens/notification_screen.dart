@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../services/firebase_service.dart';
 import '../models/app_models.dart';
 import 'home_screens.dart';
+import "task_detail_screen.dart";
+import 'package:cached_network_image/cached_network_image.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -170,7 +172,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 color: n.senderPhoto != null ? Colors.transparent : iconColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(16),
                 image: n.senderPhoto != null 
-                    ? DecorationImage(image: NetworkImage(n.senderPhoto!), fit: BoxFit.cover)
+                    ? DecorationImage(image: CachedNetworkImageProvider(n.senderPhoto!), fit: BoxFit.cover)
                     : null,
               ),
               child: n.senderPhoto == null 

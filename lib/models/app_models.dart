@@ -101,6 +101,7 @@ class TaskModel {
   final String? audioUrl;
   final List<CommentModel> comments;
   final DateTime? statusUpdatedAt;
+  final DateTime? updatedAt;
 
   TaskModel({
     required this.id,
@@ -117,6 +118,7 @@ class TaskModel {
     this.audioUrl,
     this.comments = const [],
     this.statusUpdatedAt,
+    this.updatedAt,
   });
 
   factory TaskModel.fromFirestore(DocumentSnapshot doc) {
@@ -138,6 +140,7 @@ class TaskModel {
           .map((c) => CommentModel.fromMap(c as Map<String, dynamic>))
           .toList(),
       statusUpdatedAt: data['statusUpdatedAt'] != null ? (data['statusUpdatedAt'] as Timestamp).toDate() : null,
+      updatedAt: data['updatedAt'] != null ? (data['updatedAt'] as Timestamp).toDate() : null,
     );
   }
 
@@ -156,6 +159,7 @@ class TaskModel {
       'audioUrl': audioUrl,
       'comments': comments.map((c) => c.toMap()).toList(),
       'statusUpdatedAt': statusUpdatedAt != null ? Timestamp.fromDate(statusUpdatedAt!) : null,
+      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
     };
   }
 }
