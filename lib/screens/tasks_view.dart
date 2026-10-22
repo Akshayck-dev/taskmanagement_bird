@@ -11,8 +11,16 @@ import 'package:taskflow_minimalist/screens/notification_screen.dart';
 import 'package:taskflow_minimalist/screens/task_detail_screen.dart';
 import 'package:taskflow_minimalist/widgets/app_widgets.dart';
 
-class TasksView extends StatelessWidget {
+class TasksView extends StatefulWidget {
   const TasksView({super.key});
+
+  @override
+  State<TasksView> createState() => _TasksViewState();
+}
+
+class _TasksViewState extends State<TasksView> {
+  int _visibleCount = 20;
+  final Set<String> _dismissedIds = {};
 
   String _getGreeting() {
     var hour = DateTime.now().hour;
@@ -248,28 +256,89 @@ class TasksView extends StatelessWidget {
                   if (sortedTasks.isEmpty)
                     _buildEmptyState(context, isDark)
                   else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: sortedTasks.length + 1,
-                      itemBuilder: (context, index) {
-                        if (index == sortedTasks.length) {
-                          return const SizedBox(height: 140);
-                        }
-                        final task = sortedTasks[index];
-                        return StaggeredFadeIn(
-                          key: ValueKey(task.id),
-                          index: index,
-                          child: _buildCompactTaskCard(context, task, dbService, isDark, today),
-                        );
-                      },
-                    ),
+                    ..._buildGroupedTaskList(context, sortedTasks, dbService, isDark, today, user.uid),
                 ],
               ),
             );
           },
         ),
       ),
+    );
+  }
+
+  // Groups the (already priority-sorted) tasks into date sections,
+  // windows them for long lists, and wraps each card in swipe actions.
+  List<Widget> _buildGroupedTaskList(BuildContext context, List<TaskModel> sortedTasks, DatabaseService dbService, bool isDark, DateTime today, String currentUid) {
+    final visible = sortedTasks.where((t) => !_dismissedIds.contains(t.id)).toList();
+    final shown = visible.take(_visibleCount).toList();
+
+    bool sameDay(DateTime d, DateTime ref) => d.year == ref.year && d.month == ref.month && d.day == ref.day;
+    final startTomorrow = today.add(const Duration(days: 1));
+    final startDayAfter = today.add(const Duration(days: 2));
+
+    final sections = <(String, List<TaskModel>)>[
+      ('Overdue', shown.where((t) => !t.isDone && t.deadline.isBefore(today)).toList()),
+      ('Today', shown.where((t) => !t.isDone && sameDay(t.deadline, today)).toList()),
+      ('Tomorrow', shown.where((t) => !t.isDone && sameDay(t.deadline, startTomorrow)).toList()),
+      ('Upcoming', shown.where((t) => !t.isDone && !t.deadline.isBefore(startDayAfter)).toList()),
+      ('Completed', shown.where((t) => t.isDone).toList()),
+    ];
+
+    final widgets = <Widget>[];
+    var stagger = 0;
+    for (final (label, tasks) in sections) {
+      if (tasks.isEmpty) continue;
+      widgets.add(Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 8),
+        child: Row(
+          children: [
+            Text(
+              label.toUpperCase(),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.9, color: isDark ? Colors.white38 : Colors.black45),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
+              child: Text('${tasks.length}', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: isDark ? Colors.white54 : Colors.black54)),
+            ),
+          ],
+        ),
+      ));
+      for (final task in tasks) {
+        widgets.add(StaggeredFadeIn(
+          key: ValueKey(task.id),
+          index: stagger++,
+          child: _swipeableTask(context, task, dbService, isDark, today, currentUid),
+        ));
+      }
+    }
+    if (visible.length > shown.length) {
+      widgets.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Center(
+          child: TextButton(
+            onPressed: () => setState(() => _visibleCount += 20),
+            child: Text('Show more (${visible.length - shown.length} remaining)'),
+          ),
+        ),
+      ));
+    }
+    widgets.add(const SizedBox(height: 140));
+    return widgets;
+  }
+
+  // Swipe actions are shared with My Tasks (see swipeableTaskCard in
+  // app_widgets.dart); this adapter keeps the local dismissed-set in sync.
+  Widget _swipeableTask(BuildContext context, TaskModel task, DatabaseService dbService, bool isDark, DateTime today, String currentUid) {
+    return swipeableTaskCard(
+      context: context,
+      task: task,
+      dbService: dbService,
+      currentUid: currentUid,
+      onLocalDelete: () => setState(() => _dismissedIds.add(task.id)),
+      onDeleteFailed: () => setState(() => _dismissedIds.remove(task.id)),
+      child: _buildCompactTaskCard(context, task, dbService, isDark, today),
     );
   }
 
@@ -393,10 +462,14 @@ class TasksView extends StatelessWidget {
                 HapticFeedback.lightImpact();
               },
               behavior: HitTestBehavior.opaque,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                width: 22,
-                height: 22,
+              child: SizedBox(
+                width: 38,
+                height: 38,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 22,
+                    height: 22,
                 decoration: BoxDecoration(
                   color: task.isDone
                       ? Theme.of(context).colorScheme.primary
@@ -416,6 +489,8 @@ class TasksView extends StatelessWidget {
                     : task.status == TaskStatus.inProgress
                         ? const Icon(Icons.timelapse_rounded, size: 13, color: Colors.orange)
                         : null,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 14),
@@ -439,63 +514,57 @@ class TasksView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      // Due badge
-                      dueBadge,
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              WidgetSpan(
-                                alignment: PlaceholderAlignment.middle,
-                                child: Icon(categoryIcon(task.category), size: 12, color: categoryColor(task.category)),
-                              ),
-                              const WidgetSpan(child: SizedBox(width: 3)),
-                              TextSpan(
-                                text: task.category,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: categoryColor(task.category)),
-                              ),
-                            ],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
+                  dueBadge,
                 ],
               ),
             ),
             const SizedBox(width: 8),
-
-            // In Progress chip
-            if (task.status == TaskStatus.inProgress) ...[
-              const IconChip(icon: Icons.timelapse_rounded, label: 'In Progress', color: Colors.orange),
-              const SizedBox(width: 6),
-            ],
-            // Priority Indicator / Status Chip
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: priorityColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                task.priority,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: priorityColor,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (task.status == TaskStatus.inProgress) ...[
+                      const IconChip(icon: Icons.timelapse_rounded, label: 'In Progress', color: Colors.orange),
+                      const SizedBox(width: 6),
+                    ],
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: priorityColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    task.priority,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: priorityColor,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 18,
-              color: isDark ? Colors.white30 : Colors.black38,
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: isDark ? Colors.white30 : Colors.black38,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(categoryIcon(task.category), size: 12, color: categoryColor(task.category)),
+                    const SizedBox(width: 3),
+                    Text(
+                      task.category,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: categoryColor(task.category)),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),

@@ -1,5 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import '../models/app_models.dart';
+import '../services/firebase_service.dart';
 
 class PrimaryButton extends StatefulWidget {
   final String text;
@@ -233,7 +237,14 @@ class IconChip extends StatelessWidget {
         children: [
           Icon(icon, size: 11, color: color),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color),
+            ),
+          ),
         ],
       ),
     );
@@ -524,3 +535,171 @@ Future<T?> showBlurBottomSheet<T>(BuildContext context, Widget child) {
     ),
   );
 }
+
+
+/// Wraps a task card with swipe actions:
+/// swipe right = complete / reopen (assignee only), swipe left =
+/// delete with a confirmation dialog. Actions run inside
+/// confirmDismiss and return false, so the Firestore stream stays the
+/// single source of truth; a confirmed delete first hides the card via
+/// [onLocalDelete] to avoid any dismiss race with the stream.
+Widget swipeableTaskCard({
+  required BuildContext context,
+  required TaskModel task,
+  required DatabaseService dbService,
+  required String currentUid,
+  required VoidCallback onLocalDelete,
+  required VoidCallback onDeleteFailed,
+  required Widget child,
+}) {
+  final canToggle = task.assignedTo == currentUid;
+  return Dismissible(
+    key: ValueKey('swipe-${task.id}'),
+    direction: canToggle ? DismissDirection.horizontal : DismissDirection.endToStart,
+    background: Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(14)),
+      child: Row(
+        children: [
+          Icon(task.isDone ? Icons.replay_rounded : Icons.check_circle_rounded, color: Colors.white, size: 20),
+          const SizedBox(width: 8),
+          Text(task.isDone ? 'Reopen' : 'Complete', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+        ],
+      ),
+    ),
+    secondaryBackground: Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      alignment: Alignment.centerRight,
+      decoration: BoxDecoration(color: Colors.red.shade500, borderRadius: BorderRadius.circular(14)),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+          SizedBox(width: 8),
+          Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+        ],
+      ),
+    ),
+    confirmDismiss: (direction) async {
+      if (direction == DismissDirection.startToEnd) {
+        await dbService.updateTaskStatus(task.id, !task.isDone, taskTitle: task.title, assignedBy: task.assignedBy);
+        HapticFeedback.lightImpact();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(task.isDone ? 'Moved back to To Do' : 'Marked as complete 🎉'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ));
+        }
+        return false;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Delete this task?'),
+          content: Text('"${task.title}" will be permanently deleted.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, true), style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Delete')),
+          ],
+        ),
+      );
+      if (confirmed == true) {
+        onLocalDelete();
+        dbService.deleteTask(task.id).catchError((Object _) {
+          onDeleteFailed();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Could not delete the task. Please try again.'),
+              behavior: SnackBarBehavior.floating,
+            ));
+          }
+        });
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Task deleted'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ));
+        }
+      }
+      return false;
+    },
+    child: child,
+  );
+}
+
+/// Amber strip shown while the device has no connectivity. Firestore
+/// queues writes offline and syncs on reconnect — this just makes the
+/// state visible instead of silent.
+class OfflineBanner extends StatelessWidget {
+  const OfflineBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<ConnectivityResult>>(
+      stream: Connectivity().onConnectivityChanged,
+      builder: (context, snapshot) {
+        final results = snapshot.data;
+        final offline = results != null && (results.isEmpty || results.every((r) => r == ConnectivityResult.none));
+        if (!offline) return const SizedBox.shrink();
+        return Container(
+          width: double.infinity,
+          color: const Color(0xFFF59E0B),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.wifi_off_rounded, size: 14, color: Colors.white),
+              SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  "You're offline — changes will sync when you reconnect",
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Small selectable chip used by the priority/category pickers in the
+/// create- and edit-task sheets.
+
+/// Small selectable chip used by the priority/category pickers in the
+/// create- and edit-task sheets.
+Widget taskOptionChip({
+  required String label,
+  required bool selected,
+  required VoidCallback onTap,
+  required bool isDark,
+  required Color primaryColor,
+}) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? primaryColor : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: selected ? primaryColor : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08))),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          color: selected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+        ),
+      ),
+    ),
+  );
+}
+
