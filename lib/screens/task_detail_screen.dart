@@ -28,6 +28,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final TextEditingController _commentController = TextEditingController();
   late TaskModel currentTask;
   bool _showMentions = false;
+  List<AppUser> _allUsers = [];
+  String _mentionQuery = '';
   bool _isSending = false;
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
@@ -42,6 +44,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     super.initState();
     currentTask = widget.task;
     _commentController.addListener(_onCommentChanged);
+    DatabaseService().getAllUsers().listen((users) {
+      if (mounted) setState(() => _allUsers = users);
+    });
   }
 
 
@@ -110,7 +115,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       );
       
       final recipient = user.uid == currentTask.assignedTo ? currentTask.assignedBy : currentTask.assignedTo;
-      await dbService.addComment(currentTask.id, comment, recipient, currentTask.title);
+      final mentionedUids = _allUsers
+          .where((u) => u.uid != user.uid && text.contains('@${u.name}'))
+          .map((u) => u.uid)
+          .toList();
+      await dbService.addComment(currentTask.id, comment, recipient, currentTask.title, mentionedUids: mentionedUids);
       
       _commentController.clear();
       setState(() {
@@ -133,13 +142,74 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   void _onCommentChanged() {
     final text = _commentController.text;
-    final cursorPosition = _commentController.selection.baseOffset;
-    
-    if (cursorPosition > 0 && text.substring(0, cursorPosition).endsWith('@')) {
-      setState(() => _showMentions = true);
-    } else if (_showMentions && !text.contains('@')) {
-      setState(() => _showMentions = false);
+    final cursor = _commentController.selection.baseOffset;
+    if (cursor < 0) return;
+    final beforeCursor = text.substring(0, cursor);
+    final atIndex = beforeCursor.lastIndexOf('@');
+    String query = '';
+    bool show = false;
+    if (atIndex >= 0) {
+      final tail = beforeCursor.substring(atIndex + 1);
+      if (!tail.contains(' ') && !tail.contains('\n') && tail.length <= 30) {
+        query = tail;
+        show = _filteredMentionUsers(query).isNotEmpty;
+      }
     }
+    if (show != _showMentions || query != _mentionQuery) {
+      setState(() {
+        _showMentions = show;
+        _mentionQuery = query;
+      });
+    }
+  }
+
+  List<AppUser> _filteredMentionUsers(String query) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    return _allUsers
+        .where((u) => u.uid != currentUid && u.name.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+  }
+
+  void _insertMention(AppUser user) {
+    final text = _commentController.text;
+    final cursor = _commentController.selection.baseOffset;
+    final beforeCursor = (cursor >= 0 && cursor <= text.length) ? text.substring(0, cursor) : text;
+    final afterCursor = (cursor >= 0 && cursor <= text.length) ? text.substring(cursor) : '';
+    final atIndex = beforeCursor.lastIndexOf('@');
+    if (atIndex < 0) return;
+    final newText = '${beforeCursor.substring(0, atIndex)}@${user.name} $afterCursor';
+    _commentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: atIndex + user.name.length + 2),
+    );
+    setState(() => _showMentions = false);
+  }
+
+  // Splits comment text into spans, highlighting @Name mentions of
+  // registered teammates in the primary colour.
+  List<TextSpan> _commentTextSpans(String content, TextStyle baseStyle, Color mentionColor) {
+    if (_allUsers.isEmpty || !content.contains('@')) {
+      return [TextSpan(text: content, style: baseStyle)];
+    }
+    final names = _allUsers.map((u) => u.name).where((n) => n.isNotEmpty).toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+    final pattern = RegExp('@(${names.map(RegExp.escape).join('|')})');
+    final spans = <TextSpan>[];
+    var last = 0;
+    for (final match in pattern.allMatches(content)) {
+      if (match.start > last) {
+        spans.add(TextSpan(text: content.substring(last, match.start), style: baseStyle));
+      }
+      spans.add(TextSpan(
+        text: match.group(0),
+        style: baseStyle.copyWith(color: mentionColor, fontWeight: FontWeight.w700),
+      ));
+      last = match.end;
+    }
+    if (last < content.length) {
+      spans.add(TextSpan(text: content.substring(last), style: baseStyle));
+    }
+    return spans;
   }
 
   @override
@@ -546,6 +616,37 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           ),
                         ),
                       ),
+                    if (_showMentions)
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 180),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06)),
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+                        ),
+                        child: ListView(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 4, 14, 6),
+                              child: Text(
+                                'MENTION A TEAMMATE',
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: isDark ? Colors.white38 : Colors.black38),
+                              ),
+                            ),
+                            ..._filteredMentionUsers(_mentionQuery).map((u) => ListTile(
+                                  dense: true,
+                                  leading: InitialsAvatar(name: u.name, radius: 15),
+                                  title: Text(u.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                                  subtitle: Text(u.designation, style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.black45)),
+                                  onTap: () => _insertMention(u),
+                                )),
+                          ],
+                        ),
+                      ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                       decoration: BoxDecoration(
@@ -774,12 +875,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         const SizedBox(height: 6),
                       ],
                       if (content.isNotEmpty)
-                        Text(
-                          content,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
-                            height: 1.4,
+                        Text.rich(
+                          TextSpan(
+                            children: _commentTextSpans(
+                              content,
+                              TextStyle(
+                                fontSize: 13.5,
+                                color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                                height: 1.4,
+                              ),
+                              isMe ? Colors.white : primaryColor,
+                            ),
                           ),
                         ),
                       const SizedBox(height: 4),

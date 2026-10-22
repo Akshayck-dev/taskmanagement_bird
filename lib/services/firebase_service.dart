@@ -311,7 +311,7 @@ class DatabaseService {
             .toList());
   }
 
-  Future<void> addComment(String taskId, CommentModel comment, String recipientUid, String taskTitle) async {
+  Future<void> addComment(String taskId, CommentModel comment, String recipientUid, String taskTitle, {List<String> mentionedUids = const []}) async {
     // Comments live in their own subcollection — an array inside the task
     // document would hit Firestore's 1 MB document limit over time.
     await _db.collection('tasks').doc(taskId).collection('comments').add(comment.toMap());
@@ -327,6 +327,22 @@ class DatabaseService {
         'taskId': taskId,
       },
     );
+
+    // Notify anyone @mentioned in the comment — except the commenter and
+    // the main recipient, who already got the comment notification above.
+    for (final uid in mentionedUids) {
+      if (uid == comment.uid || uid == recipientUid) continue;
+      saveNotification(
+        recipientUid: uid,
+        title: 'Mentioned in a Comment 🏷️',
+        body: '${comment.userName} mentioned you in "$taskTitle": ${comment.text}',
+        senderPhoto: comment.userPhoto,
+        data: {
+          'type': 'MENTION',
+          'taskId': taskId,
+        },
+      );
+    }
   }
 
   Future<void> saveNotification({

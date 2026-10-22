@@ -272,6 +272,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   IconData _getIcon(String title) {
+    if (title.contains('Mention')) return Icons.alternate_email_rounded;
     if (title.contains('Task Assigned')) return Icons.assignment_outlined;
     if (title.contains('Completed')) return Icons.check_circle_outline;
     if (title.contains('Comment')) return Icons.chat_bubble_outline;
@@ -279,6 +280,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Color _getIconColor(String title) {
+    if (title.contains('Mention')) return Colors.purple;
     if (title.contains('Task Assigned')) return Colors.blue;
     if (title.contains('Completed')) return Colors.green;
     if (title.contains('Comment')) return Colors.orange;
