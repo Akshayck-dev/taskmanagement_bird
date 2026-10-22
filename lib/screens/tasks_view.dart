@@ -331,7 +331,7 @@ class TasksView extends StatelessWidget {
       final daysDiff = today.difference(taskDate).inDays;
       dueBadge = IconChip(
         icon: Icons.error_rounded,
-        label: daysDiff == 1 ? 'Overdue by 1 day' : 'Overdue by $daysDiff days',
+        label: daysDiff == 1 ? 'Overdue 1d' : 'Overdue ${daysDiff}d',
         color: Colors.redAccent,
       );
     } else if (taskDate == today) {
@@ -441,32 +441,27 @@ class TasksView extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      // Creator info
-                      Text(
-                        'By ${task.assignedBy == task.assignedTo ? "Me" : "Someone"}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                          color: isDark ? Colors.white38 : Colors.black45,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '•',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isDark ? Colors.white38 : Colors.black45,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       // Due badge
                       dueBadge,
                       const SizedBox(width: 8),
-                      Icon(categoryIcon(task.category), size: 12, color: categoryColor(task.category)),
-                      const SizedBox(width: 3),
-                      Text(
-                        task.category,
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: categoryColor(task.category)),
+                      Flexible(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.middle,
+                                child: Icon(categoryIcon(task.category), size: 12, color: categoryColor(task.category)),
+                              ),
+                              const WidgetSpan(child: SizedBox(width: 3)),
+                              TextSpan(
+                                text: task.category,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: categoryColor(task.category)),
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),

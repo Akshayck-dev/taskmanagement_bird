@@ -1064,12 +1064,15 @@ class _MyTasksViewState extends State<MyTasksView> {
                       const SizedBox(width: 8),
                       Icon(categoryIcon(task.category), size: 12, color: categoryColor(task.category)),
                       const SizedBox(width: 3),
-                      Text(
-                        task.category,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: categoryColor(task.category),
+                      Flexible(
+                        child: Text(
+                          task.category,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: categoryColor(task.category),
+                          ),
                         ),
                       ),
                     ],
