@@ -7,6 +7,7 @@ import '../models/app_models.dart';
 import 'home_screens.dart';
 import "task_detail_screen.dart";
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:taskflow_minimalist/widgets/app_widgets.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -76,6 +77,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
               child: StreamBuilder<List<NotificationModel>>(
                 stream: dbService.getNotifications(user.uid),
                 builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const StreamErrorView(message: 'Could not load notifications. Please check your connection and try again.');
+                  }
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
@@ -137,7 +141,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         onSelected: (selected) {
           setState(() => _activeFilter = label);
         },
-        selectedColor: const Color(0xFF6C63FF),
+        selectedColor: Theme.of(context).colorScheme.primary,
         labelStyle: TextStyle(
           color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -169,7 +173,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: n.senderPhoto != null ? Colors.transparent : iconColor.withOpacity(0.1),
+                color: n.senderPhoto != null ? Colors.transparent : iconColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
                 image: n.senderPhoto != null 
                     ? DecorationImage(image: CachedNetworkImageProvider(n.senderPhoto!), fit: BoxFit.cover)
@@ -221,9 +225,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 height: 10,
                 margin: const EdgeInsets.only(left: 8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6C63FF),
+                  color: Theme.of(context).colorScheme.primary,
                   shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: const Color(0xFF6C63FF).withOpacity(0.5), blurRadius: 4)],
+                  boxShadow: [BoxShadow(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5), blurRadius: 4)],
                 ),
               ),
           ],

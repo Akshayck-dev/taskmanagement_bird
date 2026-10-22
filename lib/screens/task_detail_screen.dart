@@ -29,7 +29,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   late TaskModel currentTask;
   bool _showMentions = false;
   bool _isSending = false;
-  List<AppUser> _allUsers = [];
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
   
@@ -198,6 +197,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('tasks').doc(widget.task.id).snapshots(),
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const StreamErrorView(message: 'Could not load this task. It may have been deleted or you may no longer have access.');
+          }
           if (!snapshot.hasData || !snapshot.data!.exists) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -217,48 +219,47 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       // Top Row: Interactive Status Pill & optional Non-General Category
                       Row(
                         children: [
-                          GestureDetector(
-                            onTap: canChangeStatus
-                                ? () {
-                                    dbService.updateTaskStatus(
-                                      liveTask.id,
-                                      !liveTask.isDone,
-                                      taskTitle: liveTask.title,
-                                      assignedBy: liveTask.assignedBy,
-                                    );
-                                    HapticFeedback.lightImpact();
-                                  }
-                                : null,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: liveTask.isDone
-                                    ? Colors.green.withOpacity(0.12)
-                                    : primaryColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    liveTask.isDone
-                                        ? Icons.check_circle_rounded
-                                        : Icons.radio_button_unchecked_rounded,
-                                    size: 14,
-                                    color: liveTask.isDone ? Colors.green : primaryColor,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: (liveTask.status == TaskStatus.done
+                                      ? Colors.green
+                                      : liveTask.status == TaskStatus.inProgress
+                                          ? Colors.orange
+                                          : primaryColor)
+                                  .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  liveTask.status == TaskStatus.done
+                                      ? Icons.check_circle_rounded
+                                      : liveTask.status == TaskStatus.inProgress
+                                          ? Icons.timelapse_rounded
+                                          : Icons.radio_button_unchecked_rounded,
+                                  size: 14,
+                                  color: liveTask.status == TaskStatus.done
+                                      ? Colors.green
+                                      : liveTask.status == TaskStatus.inProgress
+                                          ? Colors.orange
+                                          : primaryColor,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  TaskStatus.label(liveTask.status),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: liveTask.status == TaskStatus.done
+                                        ? Colors.green
+                                        : liveTask.status == TaskStatus.inProgress
+                                            ? Colors.orange
+                                            : primaryColor,
                                   ),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    liveTask.isDone ? 'Completed' : 'Mark Complete',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: liveTask.isDone ? Colors.green : primaryColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                           if (liveTask.category != 'General') ...[
@@ -266,7 +267,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
-                                color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFF2F2F7),
+                                color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF2F2F7),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -282,6 +283,56 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
+
+                      // Status workflow selector (assignee only)
+                      if (canChangeStatus) ...[
+                        Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF16161A) : const Color(0xFFF2F2F7),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            children: TaskStatus.all.map((st) {
+                              final selected = liveTask.status == st;
+                              return Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (liveTask.status == st) return;
+                                    final notify = st == TaskStatus.done || liveTask.status == TaskStatus.done;
+                                    dbService.setTaskStatus(
+                                      liveTask.id,
+                                      st,
+                                      taskTitle: notify ? liveTask.title : null,
+                                      assignedBy: notify ? liveTask.assignedBy : null,
+                                    );
+                                    HapticFeedback.lightImpact();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: selected ? (isDark ? const Color(0xFF2C2C2E) : Colors.white) : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      TaskStatus.label(st),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                                        color: selected
+                                            ? (isDark ? Colors.white : Colors.black87)
+                                            : (isDark ? Colors.white54 : Colors.black54),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
 
                       // Task Title
                       Text(
@@ -320,7 +371,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       if (liveTask.description.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         Text(
-                          liveTask.description.replaceAll(RegExp(r'@Tester\s?\d\s?'), '').trim(),
+                          liveTask.description.replaceAll(RegExp(r'@[A-Za-z]+ ?\d? ?'), '').trim(),
                           style: TextStyle(
                             fontSize: 15,
                             color: isDark ? Colors.white70 : const Color(0xFF333333),
@@ -334,7 +385,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       const SizedBox(height: 24),
                       Divider(
                         height: 1,
-                        color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+                        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
                       ),
 
                       // Attachments Section
@@ -358,7 +409,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             decoration: BoxDecoration(
                               color: isDark ? const Color(0xFF16161A) : Colors.white,
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06)),
+                              border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06)),
                             ),
                             child: VoiceMessagePlayer(url: liveTask.audioUrl!),
                           ),
@@ -377,12 +428,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      StreamBuilder<DocumentSnapshot>(
-                        stream: FirebaseFirestore.instance.collection('tasks').doc(liveTask.id).snapshots(),
+                      StreamBuilder<List<CommentModel>>(
+                        stream: dbService.getComments(liveTask.id),
                         builder: (context, commentSnapshot) {
                           if (!commentSnapshot.hasData) return const SizedBox();
-                          final taskData = TaskModel.fromFirestore(commentSnapshot.data!);
-                          final comments = taskData.comments;
+                          // Merge subcollection comments with any legacy
+                          // comments still stored on the task document.
+                          final comments = [...liveTask.comments, ...commentSnapshot.data!]
+                            ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
                           if (comments.isEmpty) {
                             return Center(
@@ -440,7 +493,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   color: isDark ? const Color(0xFF16161A) : Colors.white,
                   border: Border(
                     top: BorderSide(
-                      color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+                      color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
                     ),
                   ),
                 ),
@@ -477,7 +530,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: primaryColor.withOpacity(0.1),
+                            color: primaryColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Row(
@@ -501,7 +554,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withOpacity(0.04) : const Color(0xFFF2F2F7),
+                        color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF2F2F7),
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: Row(
@@ -572,7 +625,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     return Container(
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(color: isDark ? bgColor.withOpacity(0.1) : bgColor, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: isDark ? bgColor.withValues(alpha: 0.1) : bgColor, borderRadius: BorderRadius.circular(20)),
       child: Text(text, style: TextStyle(color: isDark ? Colors.white70 : textColor, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
     );
   }
@@ -583,8 +636,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF0F0F0)),
-        boxShadow: [if (!isDark) BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF0F0F0)),
+        boxShadow: [if (!isDark) BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
@@ -614,8 +667,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF0F0F0)),
-        boxShadow: [if (!isDark) BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF0F0F0)),
+        boxShadow: [if (!isDark) BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -739,7 +792,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           fontSize: 9.5,
                           fontWeight: FontWeight.w500,
                           color: isMe
-                              ? Colors.white.withOpacity(0.75)
+                              ? Colors.white.withValues(alpha: 0.75)
                               : (isDark ? Colors.white38 : Colors.black38),
                         ),
                       ),

@@ -2,10 +2,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'dart:io';
 import '../main.dart';
 import '../models/app_models.dart';
-import '../screens/home_screens.dart';
 import "../screens/task_detail_screen.dart";
 
 class NotificationService {
@@ -13,7 +11,16 @@ class NotificationService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
+  // init() is called from AuthWrapper.build(), which can rebuild often.
+  // Guard so FCM listeners are only ever registered once per user.
+  static bool _initialized = false;
+  static String? _initializedUid;
+
   Future<void> init(String uid) async {
+    if (_initialized && _initializedUid == uid) return;
+    _initialized = true;
+    _initializedUid = uid;
+
     // Request permissions for iOS and Android 13+
     NotificationSettings settings = await _fcm.requestPermission(
       alert: true,
@@ -22,7 +29,7 @@ class NotificationService {
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      print('User granted notification permission');
+      debugPrint('User granted notification permission');
       
       // Get the token
       String? token = await _fcm.getToken();
@@ -41,11 +48,11 @@ class NotificationService {
 
       // Handle foreground messages
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        print('Got a message whilst in the foreground!');
-        print('Message data: ${message.data}');
+        debugPrint('Got a message whilst in the foreground!');
+        debugPrint('Message data: ${message.data}');
 
         if (message.notification != null) {
-          print('Message also contained a notification: ${message.notification}');
+          debugPrint('Message also contained a notification: ${message.notification}');
           _showLocalNotification(message);
         }
       });
@@ -74,7 +81,7 @@ class NotificationService {
           );
         }
       } catch (e) {
-        print('Error handling deep link: $e');
+        debugPrint('Error handling deep link: $e');
       }
     }
   }

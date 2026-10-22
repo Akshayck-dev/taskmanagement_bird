@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firebase_service.dart';
 import '../widgets/app_widgets.dart';
 
@@ -13,33 +12,53 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
+  bool _isRegister = false;
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(32.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Spacer(),
+              const SizedBox(height: 24),
               Container(
-                height: 180,
-                width: 180,
+                height: 150,
+                width: 150,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6C63FF).withOpacity(0.1),
+                  color: primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: const Icon(Icons.checklist_rtl, size: 90, color: Color(0xFF6C63FF)),
+                child: Icon(Icons.checklist_rtl, size: 76, color: primaryColor),
               ),
-              const SizedBox(height: 48),
-              const Text('Welcome Back 👋', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 36),
+              Text(
+                _isRegister ? 'Create Account 🚀' : 'Welcome Back 👋',
+                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
-              Text('Sign in to continue', style: TextStyle(fontSize: 16, color: Colors.grey[600])),
-              const SizedBox(height: 48),
+              Text(
+                _isRegister ? 'Sign up to get started' : 'Sign in to continue',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 36),
               if (_isLoading)
                 const CircularProgressIndicator()
               else ...[
@@ -48,16 +67,46 @@ class _LoginScreenState extends State<LoginScreen> {
                   gradientColors: [Colors.white, Colors.white],
                   textColor: Colors.black87,
                   icon: Image.network(
-                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png', 
+                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
                     height: 20,
                     errorBuilder: (context, error, stackTrace) => const Icon(Icons.login, size: 20, color: Colors.black87),
                   ),
                   onPressed: () => _handleGoogleLogin(authService),
                 ),
-                const SizedBox(height: 40),
-                _buildTesterSection(authService),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('OR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey[400], letterSpacing: 1.5)),
+                    ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                if (_isRegister) ...[
+                  _field(_nameController, 'Full name', Icons.person_outline_rounded, isDark),
+                  const SizedBox(height: 14),
+                ],
+                _field(_emailController, 'Email', Icons.mail_outline_rounded, isDark, keyboardType: TextInputType.emailAddress),
+                const SizedBox(height: 14),
+                _field(_passwordController, 'Password', Icons.lock_outline_rounded, isDark, obscure: true),
+                const SizedBox(height: 22),
+                PrimaryButton(
+                  text: _isRegister ? 'Create Account' : 'Sign In',
+                  onPressed: () => _handleEmailAuth(authService),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => setState(() => _isRegister = !_isRegister),
+                  child: Text(
+                    _isRegister ? 'Already have an account? Sign in' : 'New here? Create an account',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: primaryColor),
+                  ),
+                ),
               ],
-              const Spacer(),
+              const SizedBox(height: 24),
               Text(
                 'By continuing, you agree to Terms & Privacy Policy',
                 style: TextStyle(fontSize: 12, color: Colors.grey[500]),
@@ -66,6 +115,24 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _field(TextEditingController controller, String hint, IconData icon, bool isDark, {bool obscure = false, TextInputType? keyboardType}) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      keyboardType: keyboardType,
+      style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 15),
+        prefixIcon: Icon(icon, size: 20, color: isDark ? Colors.white38 : Colors.black38),
+        filled: true,
+        fillColor: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF5F5F7),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
     );
   }
@@ -82,73 +149,28 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Widget _buildTesterSection(AuthService authService) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            const Expanded(child: Divider()),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text('TESTER DEMO ACCOUNTS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey[400], letterSpacing: 1.5)),
-            ),
-            const Expanded(child: Divider()),
-          ],
-        ),
-        const SizedBox(height: 20),
-        SizedBox(
-          height: 90,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: 8,
-            itemBuilder: (context, index) {
-              final testerId = index + 1;
-              final name = 'Tester $testerId';
-              return GestureDetector(
-                onTap: () => _handleTesterLogin(authService, testerId, name),
-                child: Container(
-                  width: 70,
-                  margin: const EdgeInsets.only(right: 12),
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: const Color(0xFF6C63FF).withOpacity(0.1),
-                        child: Text('$testerId', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF6C63FF))),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(name, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
+  Future<void> _handleEmailAuth(AuthService authService) async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final name = _nameController.text.trim();
 
-  Future<void> _handleTesterLogin(AuthService auth, int id, String name) async {
+    if (email.isEmpty || password.isEmpty || (_isRegister && name.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill in all fields')));
+      return;
+    }
+    if (_isRegister && password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be at least 6 characters')));
+      return;
+    }
+
     setState(() => _isLoading = true);
-    final email = 'tester$id@taskflow.com';
-    const password = 'password123';
-    
     try {
-      // 1. Try to sign in
-      User? user;
-      try {
-        user = await auth.signInWithEmail(email, password);
-      } catch (e) {
-        // 2. If fails, try to register
-        user = await auth.registerWithEmail(email, password, name);
-      }
-
-      if (user != null && mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
+      final user = _isRegister
+          ? await authService.registerWithEmail(email, password, name)
+          : await authService.signInWithEmail(email, password);
+      if (user != null && mounted) Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Demo Login Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

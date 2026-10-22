@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/app_models.dart';
 import '../services/firebase_service.dart';
 import 'task_detail_screen.dart';
+import 'package:taskflow_minimalist/widgets/app_widgets.dart';
 
 class TeamScreen extends StatefulWidget {
   const TeamScreen({super.key});
@@ -77,6 +78,9 @@ class _TeamScreenState extends State<TeamScreen> {
               child: StreamBuilder<List<AppUser>>(
                 stream: dbService.getAllUsers(),
                 builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const StreamErrorView(message: 'Could not load the team list. Please check your connection and try again.');
+                  }
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return _buildSkeletonLoader(isDark);
                   }
@@ -91,7 +95,11 @@ class _TeamScreenState extends State<TeamScreen> {
                     );
                   }
 
-                  return ListView.builder(
+                  return StreamBuilder<List<TaskModel>>(
+                    stream: dbService.getAllTasks(),
+                    builder: (context, allTasksSnapshot) {
+                      final allTasks = allTasksSnapshot.data ?? [];
+                      return ListView.builder(
                     physics: const BouncingScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                     itemCount: users.length + 1,
@@ -113,7 +121,7 @@ class _TeamScreenState extends State<TeamScreen> {
                             color: cardColor,
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+                              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
                             ),
                           ),
                           child: Row(
@@ -154,18 +162,15 @@ class _TeamScreenState extends State<TeamScreen> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              StreamBuilder<List<TaskModel>>(
-                                stream: dbService.getTasks(user.uid),
-                                builder: (context, taskSnapshot) {
-                                  final activeCount = taskSnapshot.hasData
-                                      ? taskSnapshot.data!.where((t) => t.assignedTo == user.uid && !t.isDone).length
-                                      : 0;
+                              Builder(
+                                builder: (context) {
+                                  final activeCount = allTasks.where((t) => t.assignedTo == user.uid && !t.isDone).length;
                                   return Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                     decoration: BoxDecoration(
                                       color: activeCount > 0
-                                          ? primaryColor.withOpacity(0.1)
-                                          : (isDark ? Colors.white.withOpacity(0.04) : const Color(0xFFF2F2F7)),
+                                          ? primaryColor.withValues(alpha: 0.1)
+                                          : (isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF2F2F7)),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
@@ -188,6 +193,8 @@ class _TeamScreenState extends State<TeamScreen> {
                             ],
                           ),
                         ),
+                      );
+                    },
                       );
                     },
                   );
@@ -213,7 +220,7 @@ class _TeamScreenState extends State<TeamScreen> {
           child: Container(
             height: 64,
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
               borderRadius: BorderRadius.circular(14),
             ),
           ),
@@ -344,7 +351,7 @@ class MemberDetailScreen extends StatelessWidget {
                             color: isDark ? const Color(0xFF16161A) : Colors.white,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+                              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
                             ),
                           ),
                           child: Row(

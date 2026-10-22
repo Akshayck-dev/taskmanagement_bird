@@ -1,10 +1,9 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import '../models/app_models.dart';
-import 'fcm_v1_service.dart';
 import 'supabase_service.dart';
 
 class AuthService {
@@ -16,22 +15,22 @@ class AuthService {
 
   Future<User?> signInWithGoogle() async {
     try {
-      print('Starting Google Sign-In...');
+      debugPrint('Starting Google Sign-In...');
       // Add a timeout to avoid hanging forever
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn().timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          print('Google Sign-In timed out');
+          debugPrint('Google Sign-In timed out');
           throw Exception('Sign-in timed out. Please try again.');
         },
       );
 
       if (googleUser == null) {
-        print('Google Sign-In canceled by user');
+        debugPrint('Google Sign-In canceled by user');
         return null;
       }
 
-      print('Google Sign-In successful, getting authentication...');
+      debugPrint('Google Sign-In successful, getting authentication...');
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
       final AuthCredential credential = GoogleAuthProvider.credential(
@@ -39,7 +38,7 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      print('Authenticating with Firebase...');
+      debugPrint('Authenticating with Firebase...');
       final UserCredential userCredential = await _auth.signInWithCredential(credential);
       final User? user = userCredential.user;
 
@@ -52,16 +51,16 @@ class AuthService {
           'photoUrl': user.photoURL ?? '',
           'lastSeen': DateTime.now().toIso8601String(),
         }, SetOptions(merge: true));
-        print('User saved to Firestore: ${user.uid}');
+        debugPrint('User saved to Firestore: ${user.uid}');
       }
 
       return user;
     } catch (e) {
-      print('--- GOOGLE SIGN-IN ERROR ---');
-      print('Type: ${e.runtimeType}');
-      print('Details: $e');
+      debugPrint('--- GOOGLE SIGN-IN ERROR ---');
+      debugPrint('Type: ${e.runtimeType}');
+      debugPrint('Details: $e');
       if (e.toString().contains('10')) {
-        print('SUGGESTION: Error 10 usually means the SHA-1 is missing in Firebase or the Support Email is not set.');
+        debugPrint('SUGGESTION: Error 10 usually means the SHA-1 is missing in Firebase or the Support Email is not set.');
       }
       rethrow; // Rethrow so the UI can catch it and show a Snackbar
     }
@@ -75,7 +74,7 @@ class AuthService {
       );
       return credential.user;
     } catch (e) {
-      print('Email Sign-In Error: $e');
+      debugPrint('Email Sign-In Error: $e');
       rethrow;
     }
   }
@@ -99,7 +98,7 @@ class AuthService {
       }
       return user;
     } catch (e) {
-      print('Email Registration Error: $e');
+      debugPrint('Email Registration Error: $e');
       rethrow;
     }
   }
@@ -113,7 +112,6 @@ class AuthService {
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "taskmanagment-d25b4.appspot.com");
 
   User? get user => _auth.currentUser;
 
@@ -138,6 +136,17 @@ class DatabaseService {
             .toList());
   }
 
+  /// Stream of every task in the team (read is team-wide, see
+  /// firestore.rules). Used by the Team screen so member counts come
+  /// from ONE stream instead of one stream per member row.
+  Stream<List<TaskModel>> getAllTasks() {
+    return _db.collection('tasks')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => TaskModel.fromFirestore(doc))
+            .toList());
+  }
+
   // Stream of all users for assignment
   Stream<List<AppUser>> getAllUsers() {
     return _db.collection('users')
@@ -147,60 +156,21 @@ class DatabaseService {
             .toList());
   }
 
-  Future<void> addDummyUsers() async {
-    final dummyUsers = [
-      {
-        'uid': 'dummy_user_1',
-        'name': 'Sarah Developer',
-        'email': 'sarah.dev@example.com',
-        'photoUrl': 'https://i.pravatar.cc/150?img=5',
-        'lastSeen': DateTime.now().toIso8601String(),
-      },
-      {
-        'uid': 'dummy_user_2',
-        'name': 'Mike Designer',
-        'email': 'mike.design@example.com',
-        'photoUrl': 'https://i.pravatar.cc/150?img=11',
-        'lastSeen': DateTime.now().toIso8601String(),
-      },
-      {
-        'uid': 'dummy_user_3',
-        'name': 'Alex Manager',
-        'email': 'alex.man@example.com',
-        'photoUrl': 'https://i.pravatar.cc/150?img=33',
-        'lastSeen': DateTime.now().toIso8601String(),
-      }
-    ];
-
-    for (var user in dummyUsers) {
-      await _db.collection('users').doc(user['uid'] as String).set(user, SetOptions(merge: true));
-    }
-    print('Dummy users added for testing!');
-  }
-
   Future<void> createTask(TaskModel task) async {
     final docRef = await _db.collection('tasks').add(task.toMap()).timeout(
       const Duration(seconds: 10),
       onTimeout: () => throw Exception('Could not connect to database. Did you create a Firestore Database in the Firebase Console?'),
     );
     
-    // Send Notification to assigned user (Background)
-    final data = {'type': 'NEW_TASK', 'taskId': docRef.id};
-    FcmV1Service.sendNotification(
-      recipientUid: task.assignedTo,
-      title: 'New Task Assigned 📝',
-      body: 'You have been assigned: ${task.title}',
-      data: data,
-    );
-
-    // Save Notification for assigned user (Background)
+    // Save the in-app notification — the sendPushOnNotification Cloud
+    // Function turns this document into the FCM push automatically.
     saveNotification(
       recipientUid: task.assignedTo,
       title: 'New Task Assigned 📋',
       body: '${user?.displayName ?? "Someone"} assigned: ${task.title}',
       senderPhoto: user?.photoURL,
       data: {
-        'type': 'task_assigned',
+        'type': 'NEW_TASK',
         'taskId': docRef.id,
       },
     );
@@ -221,35 +191,95 @@ class DatabaseService {
     await _db.collection('tasks').doc(taskId).update(updateData);
   }
 
-  Future<void> updateTaskStatus(String taskId, bool isDone, {String? taskTitle, String? assignedBy}) async {
+  /// Sets the workflow status (TaskStatus.todo / inProgress / done).
+  /// `isDone` is kept in sync for backward compatibility with older
+  /// builds and with queries that filter on it.
+  Future<void> setTaskStatus(String taskId, String status, {String? taskTitle, String? assignedBy}) async {
+    final isDone = status == TaskStatus.done;
     await _db.collection('tasks').doc(taskId).update({
+      'status': status,
       'isDone': isDone,
       'statusUpdatedAt': Timestamp.now(),
     });
     final user = _auth.currentUser;
 
-    // If task is marked as done, notify the creator (Background)
-    if (isDone && taskTitle != null && assignedBy != null) {
-      final data = {'type': 'TASK_COMPLETED', 'taskId': taskId};
-      FcmV1Service.sendNotification(
-        recipientUid: assignedBy,
-        title: 'Task Completed! ✅',
-        body: '"$taskTitle" has been completed.',
-        data: data,
-      );
-
-      // Save Notification for the person who assigned the task (Background)
-      saveNotification(
-        recipientUid: assignedBy,
-        title: isDone ? 'Task Completed! ✅' : 'Task Reopened 🔄',
-        body: '"$taskTitle" has been ${isDone ? 'completed' : 'reopened'}.',
-        senderPhoto: user?.photoURL,
-        data: {
-          'type': 'task_update',
-          'taskId': taskId,
-        },
-      );
+    // Recurring task: spawn the next occurrence exactly once.
+    if (status == TaskStatus.done) {
+      try {
+        final doc = await _db.collection('tasks').doc(taskId).get();
+        final data = doc.data();
+        final recurrence = data?['recurrence'] as String?;
+        if (data != null && recurrence != null && recurrence != 'none' && data['nextSpawned'] != true) {
+          await _db.collection('tasks').doc(taskId).update({'nextSpawned': true});
+          final oldDeadline = (data['deadline'] as Timestamp).toDate();
+          DateTime next;
+          switch (recurrence) {
+            case 'daily':
+              next = oldDeadline.add(const Duration(days: 1));
+              break;
+            case 'weekly':
+              next = oldDeadline.add(const Duration(days: 7));
+              break;
+            case 'monthly':
+              final month = oldDeadline.month == 12 ? 1 : oldDeadline.month + 1;
+              final year = oldDeadline.month == 12 ? oldDeadline.year + 1 : oldDeadline.year;
+              final day = oldDeadline.day > 28 ? 28 : oldDeadline.day;
+              next = DateTime(year, month, day, oldDeadline.hour, oldDeadline.minute);
+              break;
+            default:
+              next = oldDeadline;
+          }
+          // If the next occurrence is already past, roll it forward to today.
+          final now = DateTime.now();
+          if (next.isBefore(now)) {
+            next = DateTime(now.year, now.month, now.day, oldDeadline.hour, oldDeadline.minute);
+            if (next.isBefore(now)) next = next.add(const Duration(days: 1));
+          }
+          final newTask = Map<String, dynamic>.from(data)
+            ..remove('nextSpawned')
+            ..remove('reminderDueSoon')
+            ..remove('reminderOverdue')
+            ..['deadline'] = Timestamp.fromDate(next)
+            ..['createdAt'] = Timestamp.now()
+            ..['isDone'] = false
+            ..['status'] = TaskStatus.todo
+            ..['comments'] = []
+            ..['statusUpdatedAt'] = null
+            ..['updatedAt'] = null;
+          await _db.collection('tasks').add(newTask);
+        }
+      } catch (e) {
+        debugPrint('Recurrence spawn failed: $e');
+      }
     }
+
+    // Notify the creator on completion / reopen.
+    // (Push delivery happens in the Cloud Function, see createTask.)
+    if (taskTitle != null && assignedBy != null && assignedBy != user?.uid) {
+      if (status == TaskStatus.done) {
+        saveNotification(
+          recipientUid: assignedBy,
+          title: 'Task Completed! ✅',
+          body: '"$taskTitle" has been completed.',
+          senderPhoto: user?.photoURL,
+          data: {'type': 'TASK_COMPLETED', 'taskId': taskId},
+        );
+      } else {
+        saveNotification(
+          recipientUid: assignedBy,
+          title: 'Task Reopened 🔄',
+          body: '"$taskTitle" has been reopened.',
+          senderPhoto: user?.photoURL,
+          data: {'type': 'task_update', 'taskId': taskId},
+        );
+      }
+    }
+  }
+
+  /// Legacy boolean API — delegates to setTaskStatus.
+  Future<void> updateTaskStatus(String taskId, bool isDone, {String? taskTitle, String? assignedBy}) async {
+    await setTaskStatus(taskId, isDone ? TaskStatus.done : TaskStatus.todo,
+        taskTitle: taskTitle, assignedBy: assignedBy);
   }
 
   Future<void> deleteTask(String taskId) async {
@@ -269,28 +299,31 @@ class DatabaseService {
     await batch.commit();
   }
 
+  /// Live stream of a task's comments from the comments subcollection,
+  /// oldest first. (Older comments stored in the task document's
+  /// `comments` array are merged in by the UI for backward compatibility.)
+  Stream<List<CommentModel>> getComments(String taskId) {
+    return _db.collection('tasks').doc(taskId).collection('comments')
+        .orderBy('timestamp')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => CommentModel.fromMap(doc.data()))
+            .toList());
+  }
+
   Future<void> addComment(String taskId, CommentModel comment, String recipientUid, String taskTitle) async {
-    await _db.collection('tasks').doc(taskId).update({
-      'comments': FieldValue.arrayUnion([comment.toMap()])
-    });
+    // Comments live in their own subcollection — an array inside the task
+    // document would hit Firestore's 1 MB document limit over time.
+    await _db.collection('tasks').doc(taskId).collection('comments').add(comment.toMap());
 
-    // Notify the other party (Background)
-    final data = {'taskId': taskId, 'type': 'COMMENT'};
-    FcmV1Service.sendNotification(
-      recipientUid: recipientUid,
-      title: 'New Comment 💬',
-      body: '${comment.userName}: ${comment.text}',
-      data: data,
-    );
-
-    // Save Notification for the recipient (Background)
+    // Save the in-app notification for the recipient (push via Cloud Function)
     saveNotification(
       recipientUid: recipientUid,
       title: 'New Comment 💬',
       body: '${comment.userName}: ${comment.text}',
       senderPhoto: comment.userPhoto,
       data: {
-        'type': 'new_comment',
+        'type': 'COMMENT',
         'taskId': taskId,
       },
     );

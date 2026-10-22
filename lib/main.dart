@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 
 import 'services/firebase_service.dart';
@@ -17,7 +16,7 @@ import 'services/supabase_service.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  print("Handling a background message: ${message.messageId}");
+  debugPrint("Handling a background message: ${message.messageId}");
 }
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -36,11 +35,6 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.dark, // Default, will be updated by theme
   ));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  
-  // Add dummy users for testing purposes without blocking app launch
-  DatabaseService().addDummyUsers().catchError((e) {
-    print('Failed to add dummy users: $e');
-  });
   
   runApp(const TaskFlowApp());
 }

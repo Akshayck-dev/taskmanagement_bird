@@ -9,6 +9,7 @@ import 'package:taskflow_minimalist/services/firebase_service.dart';
 import 'package:taskflow_minimalist/services/theme_provider.dart';
 import 'package:taskflow_minimalist/screens/notification_screen.dart';
 import 'package:taskflow_minimalist/screens/task_detail_screen.dart';
+import 'package:taskflow_minimalist/widgets/app_widgets.dart';
 
 class TasksView extends StatelessWidget {
   const TasksView({super.key});
@@ -35,6 +36,9 @@ class TasksView extends StatelessWidget {
         child: StreamBuilder<List<TaskModel>>(
           stream: dbService.getTasks(user.uid),
           builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const StreamErrorView(message: 'Could not load your tasks. Please check your connection and try again.');
+            }
             if (snapshot.connectionState == ConnectionState.waiting) {
               return _buildSkeletonLoader(context, isDark);
             }
@@ -47,7 +51,6 @@ class TasksView extends StatelessWidget {
             // Calculate counts for summary cards
             final now = DateTime.now();
             final today = DateTime(now.year, now.month, now.day);
-            final tomorrow = today.add(const Duration(days: 1));
 
             int overdueCount = 0;
             int dueTodayCount = 0;
@@ -259,7 +262,7 @@ class TasksView extends StatelessWidget {
         color: isDark ? const Color(0xFF16161A) : const Color(0xFFF9F9FB),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
         ),
       ),
       child: Column(
@@ -298,7 +301,7 @@ class TasksView extends StatelessWidget {
       dueBadge = Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFF2F2F7),
+          color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF2F2F7),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -390,12 +393,12 @@ class TasksView extends StatelessWidget {
           color: isDark ? const Color(0xFF16161A) : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
           ),
           boxShadow: [
             if (!isDark)
               BoxShadow(
-                color: Colors.black.withOpacity(0.015),
+                color: Colors.black.withValues(alpha: 0.015),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               )
@@ -431,14 +434,18 @@ class TasksView extends StatelessWidget {
                   border: Border.all(
                     color: task.isDone
                         ? Theme.of(context).colorScheme.primary
-                        : (isDark ? Colors.white30 : Colors.black38),
+                        : task.status == TaskStatus.inProgress
+                            ? Colors.orange
+                            : (isDark ? Colors.white30 : Colors.black38),
                     width: 1.5,
                   ),
                   shape: BoxShape.circle,
                 ),
                 child: task.isDone
                     ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
-                    : null,
+                    : task.status == TaskStatus.inProgress
+                        ? const Icon(Icons.timelapse_rounded, size: 13, color: Colors.orange)
+                        : null,
               ),
             ),
             const SizedBox(width: 14),
@@ -491,11 +498,26 @@ class TasksView extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
+            // In Progress chip
+            if (task.status == TaskStatus.inProgress) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  'In Progress',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.orange),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
             // Priority Indicator / Status Chip
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: priorityColor.withOpacity(0.1),
+                color: priorityColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
@@ -658,7 +680,7 @@ class _SkeletonItemState extends State<_SkeletonItem> with SingleTickerProviderS
             width: widget.width ?? double.infinity,
             height: widget.height,
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04),
+              color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(widget.borderRadius),
             ),
           ),

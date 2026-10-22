@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/app_models.dart';
 import '../services/firebase_service.dart';
 import '../services/theme_provider.dart';
-import '../services/fcm_v1_service.dart';
 import '../widgets/app_widgets.dart';
 import 'team_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,7 +13,6 @@ import 'dart:ui';
 import 'dart:io';
 import 'notification_screen.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
@@ -22,6 +20,36 @@ import 'package:permission_handler/permission_handler.dart';
 import "tasks_view.dart";
 import "task_detail_screen.dart";
 import 'package:cached_network_image/cached_network_image.dart';
+
+/// Small selectable chip used by the priority/category pickers in the
+/// create- and edit-task sheets.
+Widget taskOptionChip({
+  required String label,
+  required bool selected,
+  required VoidCallback onTap,
+  required bool isDark,
+  required Color primaryColor,
+}) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? primaryColor : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: selected ? primaryColor : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08))),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          color: selected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+        ),
+      ),
+    ),
+  );
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -56,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: false,
-      body: _screens[_selectedIndex],
+      body: IndexedStack(index: _selectedIndex, children: _screens),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: Container(
         margin: const EdgeInsets.only(top: 30),
@@ -71,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.4),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
               blurRadius: 15,
               offset: const Offset(0, 8),
             ),
@@ -91,15 +119,15 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Container(
             height: 72,
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1C1C1E).withOpacity(0.85) : Colors.white.withOpacity(0.85),
+              color: isDark ? const Color(0xFF1C1C1E).withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.85),
               borderRadius: BorderRadius.circular(36),
               border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 )
@@ -190,348 +218,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _OldTasksView extends StatelessWidget {
-  const _OldTasksView({super.key});
-
-  String _getGreeting() {
-    var hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = Provider.of<User?>(context);
-    if (user == null) return const SizedBox();
-    final dbService = DatabaseService();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Section
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${_getGreeting()}, ${user.displayName?.split(' ')[0] ?? 'User'} 👋',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: isDark ? Colors.white : Colors.black87,
-                        ),
-                      ),
-                      Text(
-                        DateFormat('EEEE, MMM d').format(DateTime.now()),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey[500],
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      _actionIcon(
-                        context, 
-                        Icon(isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, size: 20),
-                        () => Provider.of<ThemeProvider>(context, listen: false).toggleTheme(),
-                      ),
-                      const SizedBox(width: 12),
-                      StreamBuilder<List<NotificationModel>>(
-                        stream: dbService.getNotifications(user.uid),
-                        builder: (context, snapshot) {
-                          final unreadCount = snapshot.hasData ? snapshot.data!.where((n) => !n.isRead).length : 0;
-                          return _actionIcon(
-                            context, 
-                            Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                const Icon(Icons.notifications_none_rounded, size: 24),
-                                if (unreadCount > 0)
-                                  Positioned(
-                                    right: -2,
-                                    top: -2,
-                                    child: Container(
-                                      width: 10,
-                                      height: 10,
-                                      decoration: BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen())),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: EdgeInsets.fromLTRB(24, 10, 24, MediaQuery.of(context).padding.bottom + 100),
-                child: StreamBuilder<List<TaskModel>>(
-                  stream: dbService.getTasks(user.uid),
-                  builder: (context, snapshot) {
-                    final allTasks = snapshot.data ?? [];
-                    final tasks = allTasks.where((t) => t.assignedTo == user.uid || t.assignedBy == user.uid).toList();
-                    
-                    if (tasks.isEmpty) return _emptyState(context);
-
-                    final pendingTasks = tasks.where((t) => !t.isDone).toList();
-                    final completedTasks = tasks.where((t) => t.isDone).toList();
-
-                    if (pendingTasks.isEmpty && tasks.isNotEmpty) {
-                      return _allCompletedState(context);
-                    }
-
-                    final now = DateTime.now();
-                    final today = DateTime(now.year, now.month, now.day);
-                    
-                    final todayTasks = pendingTasks.where((t) => _isSameDay(t.deadline, today)).toList();
-                    final upcomingTasks = pendingTasks.where((t) => t.deadline.isAfter(today.add(const Duration(days: 1)))).toList();
-
-                    final otherTasks = pendingTasks.where((t) => !todayTasks.contains(t) && !upcomingTasks.contains(t)).toList();
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Stats Section
-                        Column(
-                          children: [
-                            _buildMiniStatCard(context, 'Active Tasks', pendingTasks.length.toString(), Icons.pending_actions_rounded, Theme.of(context).colorScheme.primary, isDark),
-                            const SizedBox(height: 12),
-                            _buildMiniStatCard(context, 'Assigned Tasks', tasks.where((t) => t.assignedBy == user.uid && t.assignedTo != user.uid).length.toString(), Icons.assignment_ind_rounded, const Color(0xFFE24C4C), isDark),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 32),
-                        Text(
-                          'Your Tasks',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        
-                        if (todayTasks.isNotEmpty) ...[
-                          _sectionHeader('Today'),
-                          ...todayTasks.map((t) => _buildTaskItem(context, t, dbService)),
-                        ],
-
-                        if (upcomingTasks.isNotEmpty) ...[
-                          _sectionHeader('Upcoming'),
-                          ...upcomingTasks.map((t) => _buildTaskItem(context, t, dbService)),
-                        ],
-                        
-                        // Remaining pending tasks that are neither today nor upcoming (overdue etc)
-                        if (otherTasks.isNotEmpty) ...[
-                          _sectionHeader('Other Pending'),
-                          ...otherTasks.map((t) => _buildTaskItem(context, t, dbService)),
-                        ],
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _actionIcon(BuildContext context, Widget icon, VoidCallback onTap) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03)),
-        ),
-        child: icon,
-      ),
-    );
-  }
-
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 16),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-          color: Colors.grey[500],
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTaskItem(BuildContext context, TaskModel task, DatabaseService db) {
-    return TweenAnimationBuilder(
-      duration: const Duration(milliseconds: 400),
-      tween: Tween<double>(begin: 0, end: 1),
-      builder: (context, double value, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: Opacity(
-            opacity: value,
-            child: child,
-          ),
-        );
-      },
-      child: TaskItem(
-        id: task.id,
-        title: task.title,
-        subtitle: DateFormat('MMM d, yyyy').format(task.deadline),
-        isDone: task.isDone,
-        isOverdue: task.deadline.isBefore(DateTime.now()) && !task.isDone,
-        photoUrl: 'https://api.dicebear.com/7.x/initials/png?seed=${task.assignedTo}',
-        category: task.category,
-        priority: task.priority,
-        canToggle: true,
-        onToggle: () {
-          final currentUid = FirebaseAuth.instance.currentUser?.uid;
-          if (currentUid != task.assignedTo) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Only the assigned person can change the status!'), behavior: SnackBarBehavior.floating));
-            return;
-          }
-          final newStatus = !task.isDone;
-          db.updateTaskStatus(task.id, newStatus, taskTitle: task.title, assignedBy: task.assignedBy);
-          HapticFeedback.mediumImpact();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(newStatus ? 'Task completed! 🎉' : 'Task reopened 🔄'),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        },
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task))),
-      ),
-    );
-  }
-
-  bool _isSameDay(DateTime d1, DateTime d2) {
-    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
-  }
-
-  Widget _emptyState(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.only(top: 100),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.task_rounded, size: 64, color: Theme.of(context).colorScheme.primary),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No tasks found',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tap the + button to create your first task!',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _allCompletedState(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.only(top: 100),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00B09B).withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.check_circle_outline_rounded, size: 64, color: Color(0xFF00B09B)),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'All are completed!',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Great job! You have cleared all your tasks.',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMiniStatCard(BuildContext context, String title, String count, IconData icon, Color color, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF0F0F0)),
-        boxShadow: [
-          if (!isDark) BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: color.withOpacity(isDark ? 0.2 : 0.1), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 16),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(count, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: isDark ? Colors.white : const Color(0xFF1A1A1A))),
-                Text(title, style: const TextStyle(fontSize: 10, color: Color(0xFF7A7A7A), fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class CreateTaskBottomSheet extends StatefulWidget {
   final String currentUserId;
   const CreateTaskBottomSheet({super.key, required this.currentUserId});
@@ -545,6 +231,8 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
   final TextEditingController _descController = TextEditingController();
   String? _selectedAssignee;
   String _selectedPriority = 'Medium';
+  String _selectedCategory = 'General';
+  String _selectedRecurrence = 'none';
   DateTime _selectedDeadline = DateTime.now().copyWith(hour: 18, minute: 0); // Default to today 6 PM
   bool _isLoading = false;
   bool _showMentions = false;
@@ -564,7 +252,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
         setState(() => _isRecording = true);
       }
     } catch (e) {
-      print('Error starting recording: $e');
+      debugPrint('Error starting recording: $e');
     }
   }
 
@@ -576,7 +264,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
         _audioPath = path;
       });
     } catch (e) {
-      print('Error stopping recording: $e');
+      debugPrint('Error stopping recording: $e');
     }
   }
 
@@ -687,7 +375,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: (_selectedAssignee == widget.currentUserId ? Colors.orange : primaryColor).withOpacity(0.1),
+                          color: (_selectedAssignee == widget.currentUserId ? Colors.orange : primaryColor).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -744,9 +432,9 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03),
+                          color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06)),
+                          border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06)),
                         ),
                         child: Row(
                           children: [
@@ -766,6 +454,48 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                     ),
                     const SizedBox(height: 16),
 
+                    _buildFieldLabel('Priority'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: TaskPriorities.all.map((pr) => taskOptionChip(
+                        label: pr,
+                        selected: _selectedPriority == pr,
+                        onTap: () => setState(() => _selectedPriority = pr),
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                      )).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    _buildFieldLabel('Category'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: TaskCategories.all.map((cat) => taskOptionChip(
+                        label: cat,
+                        selected: _selectedCategory == cat,
+                        onTap: () => setState(() => _selectedCategory = cat),
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                      )).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    _buildFieldLabel('Repeat'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: TaskRecurrence.all.map((r) => taskOptionChip(
+                        label: TaskRecurrence.label(r),
+                        selected: _selectedRecurrence == r,
+                        onTap: () => setState(() => _selectedRecurrence = r),
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                      )).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
                     // Attachments row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -774,7 +504,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                         PopupMenuButton<String>(
                           icon: Container(
                             padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
+                            decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
                             child: Icon(Icons.add, color: primaryColor, size: 18),
                           ),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -823,7 +553,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
-                                color: primaryColor.withOpacity(0.1),
+                                color: primaryColor.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Row(
@@ -901,7 +631,8 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                             isDone: false,
                             deadline: _selectedDeadline,
                             createdAt: DateTime.now(),
-                            category: 'General',
+                            category: _selectedCategory,
+                            recurrence: _selectedRecurrence,
                             priority: _selectedPriority,
                             imageUrl: imageUrl,
                             audioUrl: audioUrl,
@@ -929,7 +660,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                   ],
                 ),
               ),
-              if (_showMentions && _allUsers.isNotEmpty && _allUsers.any((u) => u.name.startsWith('Tester'))) ...[
+              if (_showMentions && _allUsers.isNotEmpty) ...[
                 Positioned(
                   left: 0,
                   right: 0,
@@ -941,13 +672,13 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(isDark ? 0.4 : 0.15), 
+                          color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15), 
                           blurRadius: 15, 
                           offset: const Offset(0, 5),
                         )
                       ],
                       border: Border.all(
-                        color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08),
+                        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08),
                       ),
                     ),
                     child: ClipRRect(
@@ -957,10 +688,9 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
                         child: ListView.builder(
                           shrinkWrap: true,
                           padding: EdgeInsets.zero,
-                          itemCount: _allUsers.where((u) => u.name.startsWith('Tester')).length,
+                          itemCount: _allUsers.length,
                           itemBuilder: (context, index) {
-                            final testers = _allUsers.where((u) => u.name.startsWith('Tester')).toList();
-                            final u = testers[index];
+                            final u = _allUsers[index];
                             return ListTile(
                               dense: true,
                               leading: CircleAvatar(
@@ -1023,7 +753,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
       hintText: hint,
       hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 13, fontWeight: FontWeight.w400),
       filled: true,
-      fillColor: isDark ? Colors.white.withOpacity(0.04) : const Color(0xFFF2F2F7),
+      fillColor: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF2F2F7),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -1122,6 +852,7 @@ class _MyTasksViewState extends State<MyTasksView> {
                 children: [
                   _filterTab('All', 0, isDark),
                   _filterTab('Active', 1, isDark),
+                  _filterTab('In Progress', 3, isDark),
                   _filterTab('Completed', 2, isDark),
                 ],
               ),
@@ -1131,6 +862,9 @@ class _MyTasksViewState extends State<MyTasksView> {
               child: StreamBuilder<List<TaskModel>>(
                 stream: dbService.getTasks(user.uid),
                 builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const StreamErrorView(message: 'Could not load your tasks. Please check your connection and try again.');
+                  }
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return _buildSkeletonLoader(isDark);
                   }
@@ -1149,12 +883,14 @@ class _MyTasksViewState extends State<MyTasksView> {
 
                   // Filter tasks
                   if (_searchQuery.isNotEmpty) {
-                    tasks = tasks.where((t) => t.title.toLowerCase().contains(_searchQuery)).toList();
+                    tasks = tasks.where((t) => t.title.toLowerCase().contains(_searchQuery) || t.description.toLowerCase().contains(_searchQuery)).toList();
                   }
                   if (_selectedFilter == 1) {
                     tasks = tasks.where((t) => !t.isDone).toList();
                   } else if (_selectedFilter == 2) {
                     tasks = tasks.where((t) => t.isDone).toList();
+                  } else if (_selectedFilter == 3) {
+                    tasks = tasks.where((t) => t.status == TaskStatus.inProgress).toList();
                   }
 
                   if (tasks.isEmpty) {
@@ -1196,7 +932,7 @@ class _MyTasksViewState extends State<MyTasksView> {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             boxShadow: isSelected && !isDark
-                ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2))]
+                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 2))]
                 : null,
           ),
           child: Center(
@@ -1233,12 +969,12 @@ class _MyTasksViewState extends State<MyTasksView> {
           color: isDark ? const Color(0xFF16161A) : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
           ),
           boxShadow: [
             if (!isDark)
               BoxShadow(
-                color: Colors.black.withOpacity(0.015),
+                color: Colors.black.withValues(alpha: 0.015),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               )
@@ -1274,14 +1010,18 @@ class _MyTasksViewState extends State<MyTasksView> {
                   border: Border.all(
                     color: task.isDone
                         ? Theme.of(context).colorScheme.primary
-                        : (isDark ? Colors.white30 : Colors.black38),
+                        : task.status == TaskStatus.inProgress
+                            ? Colors.orange
+                            : (isDark ? Colors.white30 : Colors.black38),
                     width: 1.5,
                   ),
                   shape: BoxShape.circle,
                 ),
                 child: task.isDone
                     ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
-                    : null,
+                    : task.status == TaskStatus.inProgress
+                        ? const Icon(Icons.timelapse_rounded, size: 13, color: Colors.orange)
+                        : null,
               ),
             ),
             const SizedBox(width: 14),
@@ -1337,7 +1077,7 @@ class _MyTasksViewState extends State<MyTasksView> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: priorityColor.withOpacity(0.1),
+                color: priorityColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
@@ -1408,7 +1148,7 @@ class _MyTasksViewState extends State<MyTasksView> {
           child: Container(
             height: 58,
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
               borderRadius: BorderRadius.circular(14),
             ),
           ),
@@ -1591,7 +1331,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: cardColor,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+                        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
                       ),
                     ),
                     child: Column(
@@ -1637,7 +1377,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: isDark ? const Color(0xFF2C1E1E) : const Color(0xFFFFF2F2),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.redAccent.withOpacity(0.2),
+                          color: Colors.redAccent.withValues(alpha: 0.2),
                         ),
                       ),
                       child: const Center(
@@ -1676,7 +1416,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
         ),
       ),
       child: Column(
@@ -1739,7 +1479,7 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(30),
       ),
       child: Row(
@@ -1772,7 +1512,7 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
                     thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
                     overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
                     activeTrackColor: Theme.of(context).colorScheme.primary,
-                    inactiveTrackColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                    inactiveTrackColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                     thumbColor: Theme.of(context).colorScheme.primary,
                   ),
                   child: Slider(
@@ -1838,7 +1578,7 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
         setState(() => _isRecording = true);
       }
     } catch (e) {
-      print("Error starting recording: $e");
+      debugPrint("Error starting recording: $e");
     }
   }
 
@@ -1850,7 +1590,7 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
         _audioPath = path;
       });
     } catch (e) {
-      print("Error stopping recording: $e");
+      debugPrint("Error stopping recording: $e");
     }
   }
 
@@ -1890,7 +1630,7 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
       hintText: hint,
       hintStyle: const TextStyle(color: Color(0xFFB0B0B0), fontSize: 14),
       filled: true,
-      fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+      fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     );
@@ -1995,7 +1735,7 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                  color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -2007,6 +1747,34 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
                 ),
               ),
             ),
+            const SizedBox(height: 24),
+
+            _buildFieldLabel('Priority'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: TaskPriorities.all.map((pr) => taskOptionChip(
+                label: pr,
+                selected: _selectedPriority == pr,
+                onTap: () => setState(() => _selectedPriority = pr),
+                isDark: isDark,
+                primaryColor: primaryColor,
+              )).toList(),
+            ),
+            const SizedBox(height: 16),
+
+            _buildFieldLabel('Category'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: TaskCategories.all.map((cat) => taskOptionChip(
+                label: cat,
+                selected: _selectedCategory == cat,
+                onTap: () => setState(() => _selectedCategory = cat),
+                isDark: isDark,
+                primaryColor: primaryColor,
+              )).toList(),
+            ),
             const SizedBox(height: 32),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2015,7 +1783,7 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
                 PopupMenuButton<String>(
                   icon: Container(
                     padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withOpacity(0.1), shape: BoxShape.circle),
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
                     child: Icon(Icons.add, color: Theme.of(context).colorScheme.primary, size: 24),
                   ),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -2063,7 +1831,7 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -2146,7 +1914,7 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
                 decoration: BoxDecoration(
                   color: primaryColor,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))],
+                  boxShadow: [BoxShadow(color: primaryColor.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 6))],
                 ),
                 child: Center(
                   child: _isLoading

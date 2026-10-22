@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
@@ -17,12 +18,12 @@ class SupabaseService {
 
   static Future<String> uploadFile(String folder, File file) async {
     try {
-      print('--- SUPABASE UPLOAD START ---');
-      print('Folder: $folder');
-      print('File path: ${file.path}');
+      debugPrint('--- SUPABASE UPLOAD START ---');
+      debugPrint('Folder: $folder');
+      debugPrint('File path: ${file.path}');
       
       if (!await file.exists()) {
-        print('Error: File does not exist at path ${file.path}');
+        debugPrint('Error: File does not exist at path ${file.path}');
         throw Exception('File does not exist');
       }
 
@@ -31,23 +32,23 @@ class SupabaseService {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_$originalName';
       final path = '$folder/$fileName';
       
-      print('Uploading to: $path');
+      debugPrint('Uploading to: $path');
 
       await _client.storage.from(_bucketName).upload(
         path,
         file,
         fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
       ).timeout(const Duration(seconds: 60), onTimeout: () {
-        print('Supabase upload timed out after 60s');
+        debugPrint('Supabase upload timed out after 60s');
         throw Exception('Upload timed out. Please check your internet connection.');
       });
 
       final publicUrl = _client.storage.from(_bucketName).getPublicUrl(path);
-      print('Upload successful! Public URL: $publicUrl');
+      debugPrint('Upload successful! Public URL: $publicUrl');
       return publicUrl;
     } catch (e) {
-      print('--- SUPABASE UPLOAD ERROR ---');
-      print('Error: $e');
+      debugPrint('--- SUPABASE UPLOAD ERROR ---');
+      debugPrint('Error: $e');
       rethrow;
     }
   }

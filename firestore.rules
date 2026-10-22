@@ -1,0 +1,65 @@
+rules_version = '2';
+
+// TaskFlow Firestore security rules.
+// Deploy with:  firebase deploy --only firestore:rules
+//
+// Model:
+//  - Any signed-in user can read the team directory (users) so tasks can
+//    be assigned, but a user can only write their own profile document.
+//  - A task is visible and editable only by its creator (assignedBy)
+//    and its assignee (assignedTo).
+//  - Comments live in tasks/{taskId}/comments and follow the parent task.
+//  - In-app notifications (users/{uid}/notifications) can be created by
+//    any signed-in user (that's how teammates notify each other), but
+//    only their owner can read, update or delete them. The
+//    sendPushOnNotification Cloud Function uses the Admin SDK and is
+//    not bound by these rules.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isTaskParty(taskId) {
+      let task = get(/databases/$(database)/documents/tasks/$(taskId)).data;
+      return signedIn() &&
+        (task.assignedTo == request.auth.uid || task.assignedBy == request.auth.uid);
+    }
+
+    // ---- Team directory & profiles ----
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if false;
+
+      // ---- In-app notifications ----
+      match /notifications/{notificationId} {
+        allow create: if signedIn();
+        allow read, update, delete: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // ---- Tasks ----
+    // Read is team-wide on purpose: the Team screens list every member's
+    // tasks and counts. Writes stay restricted to creator/assignee.
+    match /tasks/{taskId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+        request.resource.data.assignedBy == request.auth.uid;
+      allow update, delete: if signedIn() &&
+        (resource.data.assignedTo == request.auth.uid ||
+         resource.data.assignedBy == request.auth.uid);
+
+      // ---- Comments (subcollection) ----
+      match /comments/{commentId} {
+        allow read: if isTaskParty(taskId);
+        allow create: if isTaskParty(taskId) &&
+          request.resource.data.uid == request.auth.uid;
+        allow update, delete: if signedIn() &&
+          resource.data.uid == request.auth.uid;
+      }
+    }
+  }
+}
