@@ -109,10 +109,13 @@ class _TeamScreenState extends State<TeamScreen> {
                       }
                       final user = users[index];
 
-                      return GestureDetector(
+                      return StaggeredFadeIn(
+                        key: ValueKey(user.uid),
+                        index: index,
+                        child: GestureDetector(
                         onTap: () => Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => MemberDetailScreen(user: user)),
+                          smoothPageRoute(MemberDetailScreen(user: user)),
                         ),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -126,12 +129,13 @@ class _TeamScreenState extends State<TeamScreen> {
                           ),
                           child: Row(
                             children: [
-                              CircleAvatar(
-                                radius: 22,
-                                backgroundImage: user.photoUrl.isNotEmpty ? CachedNetworkImageProvider(user.photoUrl) : null,
-                                backgroundColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
-                                child: user.photoUrl.isEmpty ? const Icon(Icons.person, size: 20, color: Colors.grey) : null,
-                              ),
+                              user.photoUrl.isNotEmpty
+                                  ? CircleAvatar(
+                                      radius: 22,
+                                      backgroundImage: CachedNetworkImageProvider(user.photoUrl),
+                                      backgroundColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
+                                    )
+                                  : InitialsAvatar(name: user.name, radius: 22),
                               const SizedBox(width: 14),
                               Expanded(
                                 child: Column(
@@ -193,6 +197,7 @@ class _TeamScreenState extends State<TeamScreen> {
                             ],
                           ),
                         ),
+                        ),
                       );
                     },
                       );
@@ -212,19 +217,9 @@ class _TeamScreenState extends State<TeamScreen> {
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       itemCount: 6,
-      itemBuilder: (context, index) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: AnimatedOpacity(
-          opacity: 0.6,
-          duration: const Duration(milliseconds: 500),
-          child: Container(
-            height: 64,
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-        ),
+      itemBuilder: (context, index) => const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: ShimmerBlock(height: 64, radius: 14),
       ),
     );
   }
@@ -263,12 +258,13 @@ class MemberDetailScreen extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 16),
-            CircleAvatar(
-              radius: 44,
-              backgroundImage: user.photoUrl.isNotEmpty ? CachedNetworkImageProvider(user.photoUrl) : null,
-              backgroundColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
-              child: user.photoUrl.isEmpty ? const Icon(Icons.person, size: 40, color: Colors.grey) : null,
-            ),
+            user.photoUrl.isNotEmpty
+                ? CircleAvatar(
+                    radius: 44,
+                    backgroundImage: CachedNetworkImageProvider(user.photoUrl),
+                    backgroundColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
+                  )
+                : InitialsAvatar(name: user.name, radius: 44),
             const SizedBox(height: 16),
             Text(
               user.name,

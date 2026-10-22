@@ -92,85 +92,126 @@ class TasksView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Profile image & Greeting Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
+                  // Gradient hero header with progress ring
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: kBrandGradient,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6D5DF6).withValues(alpha: 0.35),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${_getGreeting()}, ${user.displayName?.split(' ')[0] ?? 'User'} 👋',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? Colors.white : Colors.black87,
-                                letterSpacing: -0.6,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    DateFormat('EEEE, MMM d').format(now),
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.85), letterSpacing: 0.4),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${_getGreeting()}, ${user.displayName?.split(' ')[0] ?? 'User'} 👋',
+                                    style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              activeAssignedCount == 1
-                                  ? "You have 1 assigned task"
-                                  : "You have $activeAssignedCount assigned tasks",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w400,
-                                color: isDark ? Colors.white70 : Colors.black54,
+                            // Notifications Button
+                            StreamBuilder<List<NotificationModel>>(
+                              stream: dbService.getNotifications(user.uid),
+                              builder: (context, notificationSnapshot) {
+                                final unreadCount = notificationSnapshot.hasData
+                                    ? notificationSnapshot.data!.where((n) => !n.isRead).length
+                                    : 0;
+                                return GestureDetector(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    smoothPageRoute(const NotificationScreen()),
+                                  ),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(alpha: 0.18),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(Icons.notifications_none_rounded, size: 22, color: Colors.white),
+                                      ),
+                                      if (unreadCount > 0)
+                                        Positioned(
+                                          right: 2,
+                                          top: 2,
+                                          child: Container(
+                                            width: 9,
+                                            height: 9,
+                                            decoration: BoxDecoration(
+                                              color: Colors.amberAccent,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: Colors.white, width: 1.2),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            ProgressRing(
+                              progress: assignedTasks.isEmpty ? 0 : assignedTasks.where((t) => t.isDone).length / assignedTasks.length,
+                              size: 74,
+                              label: assignedTasks.isEmpty ? '0%' : '${(assignedTasks.where((t) => t.isDone).length / assignedTasks.length * 100).round()}%',
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    assignedTasks.isEmpty
+                                        ? 'No tasks assigned yet'
+                                        : '${assignedTasks.where((t) => t.isDone).length} of ${assignedTasks.length} tasks done',
+                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    activeAssignedCount == 0
+                                        ? "You're all caught up. Nice work! 🎉"
+                                        : activeAssignedCount == 1
+                                            ? '1 task still needs your attention'
+                                            : '$activeAssignedCount tasks still need your attention',
+                                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.85)),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      // Notifications Button
-                      StreamBuilder<List<NotificationModel>>(
-                        stream: dbService.getNotifications(user.uid),
-                        builder: (context, notificationSnapshot) {
-                          final unreadCount = notificationSnapshot.hasData
-                              ? notificationSnapshot.data!.where((n) => !n.isRead).length
-                              : 0;
-                          return GestureDetector(
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const NotificationScreen()),
-                            ),
-                            behavior: HitTestBehavior.opaque,
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF16161A) : const Color(0xFFF2F2F7),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    Icons.notifications_none_rounded,
-                                    size: 22,
-                                    color: isDark ? Colors.white : Colors.black87,
-                                  ),
-                                ),
-                                if (unreadCount > 0)
-                                  Positioned(
-                                    right: 2,
-                                    top: 2,
-                                    child: Container(
-                                      width: 9,
-                                      height: 9,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.redAccent,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 14),
 
@@ -178,33 +219,15 @@ class TasksView extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: _buildSummaryCard(
-                          context,
-                          'Overdue',
-                          '$overdueCount',
-                          overdueCount > 0 ? Colors.redAccent : (isDark ? Colors.white24 : Colors.black38),
-                          isDark,
-                        ),
+                        child: _buildSummaryCard(context, 'Overdue', overdueCount, Icons.priority_high_rounded, Colors.redAccent, isDark),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: _buildSummaryCard(
-                          context,
-                          'Due Today',
-                          '$dueTodayCount',
-                          dueTodayCount > 0 ? Colors.orange : (isDark ? Colors.white24 : Colors.black38),
-                          isDark,
-                        ),
+                        child: _buildSummaryCard(context, 'Due Today', dueTodayCount, Icons.today_rounded, Colors.orange, isDark),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: _buildSummaryCard(
-                          context,
-                          'Upcoming',
-                          '$upcomingCount',
-                          upcomingCount > 0 ? primaryColor : (isDark ? Colors.white24 : Colors.black38),
-                          isDark,
-                        ),
+                        child: _buildSummaryCard(context, 'Upcoming', upcomingCount, Icons.upcoming_rounded, primaryColor, isDark),
                       ),
                     ],
                   ),
@@ -234,7 +257,11 @@ class TasksView extends StatelessWidget {
                           return const SizedBox(height: 140);
                         }
                         final task = sortedTasks[index];
-                        return _buildCompactTaskCard(context, task, dbService, isDark, today);
+                        return StaggeredFadeIn(
+                          key: ValueKey(task.id),
+                          index: index,
+                          child: _buildCompactTaskCard(context, task, dbService, isDark, today),
+                        );
                       },
                     ),
                 ],
@@ -255,36 +282,37 @@ class TasksView extends StatelessWidget {
     return 4; // Upcoming
   }
 
-  Widget _buildSummaryCard(BuildContext context, String label, String value, Color color, bool isDark) {
+  Widget _buildSummaryCard(BuildContext context, String label, int value, IconData icon, Color color, bool isDark) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF16161A) : const Color(0xFFF9F9FB),
+        color: isDark ? const Color(0xFF16161A) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
         ),
+        boxShadow: [
+          if (!isDark)
+            BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 12, offset: const Offset(0, 4)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: color,
-              letterSpacing: -0.5,
-            ),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+            child: Icon(icon, size: 15, color: color),
+          ),
+          const SizedBox(height: 10),
+          AnimatedCount(
+            value: value,
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: isDark ? Colors.white : Colors.black87, letterSpacing: -0.5),
           ),
           const SizedBox(height: 2),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.white70 : Colors.black54,
-            ),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: isDark ? Colors.white70 : Colors.black54),
           ),
         ],
       ),
@@ -296,96 +324,28 @@ class TasksView extends StatelessWidget {
     // Determine due status badge
     final taskDate = DateTime(task.deadline.year, task.deadline.month, task.deadline.day);
     Widget dueBadge;
-    
+
     if (task.isDone) {
-      dueBadge = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF2F2F7),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          'Completed',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white54 : Colors.black45,
-          ),
-        ),
-      );
+      dueBadge = IconChip(icon: Icons.check_circle_rounded, label: 'Completed', color: isDark ? Colors.white54 : Colors.black45);
     } else if (taskDate.isBefore(today)) {
       final daysDiff = today.difference(taskDate).inDays;
-      final badgeText = daysDiff == 1 ? "Overdue by 1 day" : "Overdue by $daysDiff days";
-      dueBadge = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🔴 ', style: TextStyle(fontSize: 10)),
-          Text(
-            badgeText,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.redAccent,
-            ),
-          ),
-        ],
+      dueBadge = IconChip(
+        icon: Icons.error_rounded,
+        label: daysDiff == 1 ? 'Overdue by 1 day' : 'Overdue by $daysDiff days',
+        color: Colors.redAccent,
       );
     } else if (taskDate == today) {
-      dueBadge = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🟠 ', style: TextStyle(fontSize: 10)),
-          Text(
-            'Due Today',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.orange[800] ?? Colors.orange,
-            ),
-          ),
-        ],
-      );
+      dueBadge = const IconChip(icon: Icons.today_rounded, label: 'Due Today', color: Colors.orange);
     } else if (taskDate == today.add(const Duration(days: 1))) {
-      dueBadge = const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('🟡 ', style: TextStyle(fontSize: 10)),
-          Text(
-            'Tomorrow',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.amber,
-            ),
-          ),
-        ],
-      );
+      dueBadge = const IconChip(icon: Icons.event_rounded, label: 'Tomorrow', color: Color(0xFFD97706));
     } else {
-      dueBadge = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🟢 ', style: TextStyle(fontSize: 10)),
-          Text(
-            DateFormat('MMM d').format(task.deadline),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.green,
-            ),
-          ),
-        ],
-      );
+      dueBadge = IconChip(icon: Icons.event_available_rounded, label: DateFormat('MMM d').format(task.deadline), color: Colors.green);
     }
 
-    final priorityColor = task.priority == 'High'
-        ? Colors.redAccent
-        : (task.priority == 'Medium' ? Colors.orangeAccent : Colors.blueAccent);
+    final priorityColor = priorityColorOf(task.priority);
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task)),
-      ),
+      onTap: () => Navigator.push(context, smoothPageRoute(TaskDetailScreen(task: task))),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -406,6 +366,16 @@ class TasksView extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // Priority bar
+            Container(
+              width: 4,
+              height: 40,
+              decoration: BoxDecoration(
+                color: task.isDone ? (isDark ? Colors.white24 : Colors.black26) : priorityColor,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(width: 12),
             // Status Checkbox (One-tap actionable)
             GestureDetector(
               onTap: () {
@@ -491,6 +461,13 @@ class TasksView extends StatelessWidget {
                       const SizedBox(width: 8),
                       // Due badge
                       dueBadge,
+                      const SizedBox(width: 8),
+                      Icon(categoryIcon(task.category), size: 12, color: categoryColor(task.category)),
+                      const SizedBox(width: 3),
+                      Text(
+                        task.category,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: categoryColor(task.category)),
+                      ),
                     ],
                   ),
                 ],
@@ -500,17 +477,7 @@ class TasksView extends StatelessWidget {
 
             // In Progress chip
             if (task.status == TaskStatus.inProgress) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'In Progress',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.orange),
-                ),
-              ),
+              const IconChip(icon: Icons.timelapse_rounded, label: 'In Progress', color: Colors.orange),
               const SizedBox(width: 6),
             ],
             // Priority Indicator / Status Chip
@@ -544,34 +511,32 @@ class TasksView extends StatelessWidget {
   Widget _buildEmptyState(BuildContext context, bool isDark) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 48),
+      padding: const EdgeInsets.symmetric(vertical: 44),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            '📋',
-            style: TextStyle(
-              fontSize: 36,
-              color: isDark ? Colors.white30 : Colors.black38,
+          Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [kBrandGradient[0].withValues(alpha: 0.16), kBrandGradient[2].withValues(alpha: 0.16)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
+            child: Icon(Icons.task_alt_rounded, size: 38, color: Theme.of(context).colorScheme.primary),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Text(
             'No Assigned Tasks',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black87),
           ),
           const SizedBox(height: 4),
           Text(
-            "You're all caught up.",
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w400,
-              color: isDark ? Colors.white38 : Colors.black45,
-            ),
+            "You're all caught up. New tasks will appear here.",
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: isDark ? Colors.white38 : Colors.black45),
           ),
         ],
       ),
@@ -633,7 +598,7 @@ class TasksView extends StatelessWidget {
   }
 }
 
-class _SkeletonItem extends StatefulWidget {
+class _SkeletonItem extends StatelessWidget {
   final double? width;
   final double height;
   final double borderRadius;
@@ -645,47 +610,7 @@ class _SkeletonItem extends StatefulWidget {
   });
 
   @override
-  State<_SkeletonItem> createState() => _SkeletonItemState();
-}
-
-class _SkeletonItemState extends State<_SkeletonItem> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.4, end: 0.8).animate(_controller);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _animation.value,
-          child: Container(
-            width: widget.width ?? double.infinity,
-            height: widget.height,
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(widget.borderRadius),
-            ),
-          ),
-        );
-      },
-    );
+    return ShimmerBlock(height: height, width: width, radius: borderRadius);
   }
 }

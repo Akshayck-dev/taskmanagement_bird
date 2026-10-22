@@ -110,13 +110,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       if (newNotifs.isNotEmpty) ...[
                         const Text('New', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
-                        ...newNotifs.map((n) => _notificationItem(n, isDark, dbService, user.uid)),
+                        ...newNotifs.asMap().entries.map((e) => StaggeredFadeIn(key: ValueKey(e.value.id), index: e.key, child: _notificationItem(e.value, isDark, dbService, user.uid))),
                         const SizedBox(height: 24),
                       ],
                       if (earlierNotifs.isNotEmpty) ...[
                         const Text('Earlier', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
-                        ...earlierNotifs.map((n) => _notificationItem(n, isDark, dbService, user.uid)),
+                        ...earlierNotifs.asMap().entries.map((e) => StaggeredFadeIn(key: ValueKey(e.value.id), index: e.key, child: _notificationItem(e.value, isDark, dbService, user.uid))),
                       ],
                     ],
                   );
@@ -249,9 +249,23 @@ class _NotificationScreenState extends State<NotificationScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_off_outlined, size: 80, color: Colors.grey[300]),
+          Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [kBrandGradient[0].withValues(alpha: 0.16), kBrandGradient[2].withValues(alpha: 0.16)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Icon(Icons.notifications_off_outlined, size: 36, color: Theme.of(context).colorScheme.primary),
+          ),
           const SizedBox(height: 16),
-          const Text('All clear!', style: TextStyle(color: Colors.grey, fontSize: 18)),
+          const Text('All clear!', style: TextStyle(color: Colors.grey, fontSize: 17, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          const Text('No notifications here.', style: TextStyle(color: Colors.grey, fontSize: 13)),
         ],
       ),
     );

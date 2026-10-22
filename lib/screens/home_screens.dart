@@ -209,12 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showCreateTaskSheet(BuildContext context, String currentUserId) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => CreateTaskBottomSheet(currentUserId: currentUserId),
-    );
+    showBlurBottomSheet(context, CreateTaskBottomSheet(currentUserId: currentUserId));
   }
 }
 
@@ -906,7 +901,11 @@ class _MyTasksViewState extends State<MyTasksView> {
                       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                       itemCount: tasks.length,
                       itemBuilder: (context, index) {
-                        return _buildCompactTaskCard(context, tasks[index], dbService, isDark);
+                        return StaggeredFadeIn(
+                          key: ValueKey(tasks[index].id),
+                          index: index,
+                          child: _buildCompactTaskCard(context, tasks[index], dbService, isDark),
+                        );
                       },
                     ),
                   );
@@ -953,15 +952,10 @@ class _MyTasksViewState extends State<MyTasksView> {
   }
 
   Widget _buildCompactTaskCard(BuildContext context, TaskModel task, DatabaseService db, bool isDark) {
-    final priorityColor = task.priority == 'High'
-        ? Colors.redAccent
-        : (task.priority == 'Medium' ? Colors.orangeAccent : Colors.blueAccent);
+    final priorityColor = priorityColorOf(task.priority);
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task)),
-      ),
+      onTap: () => Navigator.push(context, smoothPageRoute(TaskDetailScreen(task: task))),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -974,14 +968,24 @@ class _MyTasksViewState extends State<MyTasksView> {
           boxShadow: [
             if (!isDark)
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.015),
-                blurRadius: 10,
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 12,
                 offset: const Offset(0, 4),
               )
           ],
         ),
         child: Row(
           children: [
+            // Priority bar
+            Container(
+              width: 4,
+              height: 40,
+              decoration: BoxDecoration(
+                color: task.isDone ? (isDark ? Colors.white24 : Colors.black26) : priorityColor,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(width: 12),
             // Status Checkbox
             GestureDetector(
               onTap: () {
@@ -1058,12 +1062,14 @@ class _MyTasksViewState extends State<MyTasksView> {
                       const SizedBox(width: 8),
                       Text('•', style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.black45)),
                       const SizedBox(width: 8),
+                      Icon(categoryIcon(task.category), size: 12, color: categoryColor(task.category)),
+                      const SizedBox(width: 3),
                       Text(
                         task.category,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
-                          color: isDark ? Colors.white38 : Colors.black45,
+                          color: categoryColor(task.category),
                         ),
                       ),
                     ],
@@ -1106,19 +1112,25 @@ class _MyTasksViewState extends State<MyTasksView> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            '📋',
-            style: TextStyle(
-              fontSize: 32,
-              color: isDark ? Colors.white30 : Colors.black26,
+          Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [kBrandGradient[0].withValues(alpha: 0.16), kBrandGradient[2].withValues(alpha: 0.16)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
+            child: Icon(Icons.task_alt_rounded, size: 38, color: Theme.of(context).colorScheme.primary),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Text(
-            'No Assigned Tasks',
+            'Nothing here yet',
             style: TextStyle(
               fontSize: 15,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
               color: isDark ? Colors.white : Colors.black87,
             ),
           ),
@@ -1140,19 +1152,9 @@ class _MyTasksViewState extends State<MyTasksView> {
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       itemCount: 5,
-      itemBuilder: (context, index) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: AnimatedOpacity(
-          opacity: 0.6,
-          duration: const Duration(milliseconds: 500),
-          child: Container(
-            height: 58,
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-        ),
+      itemBuilder: (context, index) => const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: ShimmerBlock(height: 58, radius: 14),
       ),
     );
   }
@@ -1237,59 +1239,92 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 32),
 
-                  // Profile Picture
-                  GestureDetector(
-                    onTap: _pickImage,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: primaryColor, width: 2),
-                          ),
-                          child: CircleAvatar(
-                            radius: 46,
-                            backgroundColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
-                            backgroundImage: _imageFile != null 
-                                ? FileImage(_imageFile!) 
-                                : (userData.photoUrl.isNotEmpty ? CachedNetworkImageProvider(userData.photoUrl) : null) as ImageProvider?,
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
-                            child: const Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white),
-                          ),
+                  // Gradient profile hero
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: kBrandGradient,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6D5DF6).withValues(alpha: 0.32),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Name & Email
-                  Text(
-                    userData.name,
-                    style: TextStyle(
-                      fontSize: 20, 
-                      fontWeight: FontWeight.w700, 
-                      color: isDark ? Colors.white : Colors.black87, 
-                      letterSpacing: -0.5,
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: _pickImage,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white.withValues(alpha: 0.65), width: 2),
+                                ),
+                                child: CircleAvatar(
+                                  radius: 46,
+                                  backgroundColor: Colors.white.withValues(alpha: 0.15),
+                                  backgroundImage: _imageFile != null
+                                      ? FileImage(_imageFile!)
+                                      : (userData.photoUrl.isNotEmpty ? CachedNetworkImageProvider(userData.photoUrl) : null) as ImageProvider?,
+                                  child: (_imageFile == null && userData.photoUrl.isEmpty)
+                                      ? Text(
+                                          userData.name.isNotEmpty ? userData.name[0].toUpperCase() : '?',
+                                          style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w700, color: Colors.white),
+                                        )
+                                      : null,
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                  child: Icon(Icons.camera_alt_rounded, size: 14, color: primaryColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          userData.name,
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          userData.email,
+                          style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.85)),
+                        ),
+                        if (userData.designation.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              userData.designation,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    userData.email,
-                    style: TextStyle(
-                      fontSize: 13, 
-                      color: isDark ? Colors.white38 : Colors.black45,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 20),
 
                   // 3-Column Stats Row
                   StreamBuilder<List<TaskModel>>(
@@ -1421,11 +1456,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Column(
         children: [
-          Text(
-            value,
+          AnimatedCount(
+            value: int.tryParse(value) ?? 0,
             style: TextStyle(
               fontSize: 20,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               color: isDark ? Colors.white : Colors.black87,
               letterSpacing: -0.5,
             ),

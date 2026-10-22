@@ -180,12 +180,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 return IconButton(
                   icon: Icon(Icons.more_horiz_rounded, color: primaryColor),
                   onPressed: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (context) => EditTaskBottomSheet(task: liveTask),
-                    );
+                    showBlurBottomSheet(context, EditTaskBottomSheet(task: liveTask));
                   },
                 );
               }
@@ -675,7 +670,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         children: [
           ClipRRect(
             borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-            child: CachedNetworkImage(imageUrl: imageUrl, height: 120, width: double.infinity, fit: BoxFit.cover),
+            child: CachedNetworkImage(imageUrl: imageUrl, height: 120, width: double.infinity, fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 350), placeholder: (context, url) => const ShimmerBlock(height: 120, radius: 0)),
           ),
           Padding(
             padding: const EdgeInsets.all(12),
@@ -768,6 +763,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             height: 140,
                             width: 180,
                             fit: BoxFit.cover,
+                            fadeInDuration: const Duration(milliseconds: 350),
+                            placeholder: (context, url) => const ShimmerBlock(height: 140, width: 180, radius: 10),
                           ),
                         ),
                         const SizedBox(height: 6),
