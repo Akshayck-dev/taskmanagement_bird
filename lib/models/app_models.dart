@@ -109,9 +109,18 @@ class TaskCategories {
   static const List<String> all = ['General', 'Design', 'Development', 'Marketing', 'Operations', 'Personal'];
 }
 
-/// Priorities offered in the create/edit task pickers.
+/// Priorities offered in the create/edit task pickers — deliberately
+/// just two: a task is either Urgent or it is Normal.
 class TaskPriorities {
-  static const List<String> all = ['Low', 'Medium', 'High'];
+  static const String normal = 'Normal';
+  static const String urgent = 'Urgent';
+  static const List<String> all = [normal, urgent];
+
+  /// Maps any stored value (including the retired Low/Medium/High
+  /// scale) onto the two current levels: old High counts as Urgent,
+  /// everything else is Normal.
+  static String normalize(String? value) =>
+      (value == urgent || value == 'High') ? urgent : normal;
 }
 
 /// Workflow status values stored in TaskModel.status.
@@ -163,7 +172,7 @@ class TaskModel {
     required this.deadline,
     required this.createdAt,
     this.category = 'General',
-    this.priority = 'Medium',
+    this.priority = TaskPriorities.normal,
     this.imageUrl,
     this.audioUrl,
     this.recurrence = 'none',
@@ -185,7 +194,7 @@ class TaskModel {
       deadline: data['deadline'] is Timestamp ? (data['deadline'] as Timestamp).toDate() : DateTime.now(),
       createdAt: data['createdAt'] is Timestamp ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
       category: data['category'] ?? 'General',
-      priority: data['priority'] ?? 'Medium',
+      priority: TaskPriorities.normalize(data['priority'] as String?),
       imageUrl: data['imageUrl'],
       audioUrl: data['audioUrl'],
       recurrence: data['recurrence'] ?? 'none',

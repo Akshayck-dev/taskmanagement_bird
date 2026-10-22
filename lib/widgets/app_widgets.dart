@@ -208,12 +208,10 @@ Color categoryColor(String category) {
 
 Color priorityColorOf(String priority) {
   switch (priority) {
-    case 'High':
+    case 'Urgent':
       return const Color(0xFFEF4444);
-    case 'Low':
-      return const Color(0xFF3B82F6);
-    default:
-      return const Color(0xFFF59E0B);
+    default: // Normal
+      return const Color(0xFF64748B);
   }
 }
 

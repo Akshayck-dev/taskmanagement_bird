@@ -103,7 +103,14 @@ void main() {
   group('Pickers', () {
     test('categories and priorities are non-empty and unique', () {
       expect(TaskCategories.all.toSet().length, TaskCategories.all.length);
-      expect(TaskPriorities.all, containsAll(['Low', 'Medium', 'High']));
+      expect(TaskPriorities.all, containsAll(['Normal', 'Urgent']));
+      expect(TaskPriorities.all.length, 2);
+      // Legacy values map onto the two levels.
+      expect(TaskPriorities.normalize('High'), 'Urgent');
+      expect(TaskPriorities.normalize('Medium'), 'Normal');
+      expect(TaskPriorities.normalize('Low'), 'Normal');
+      expect(TaskPriorities.normalize('Urgent'), 'Urgent');
+      expect(TaskPriorities.normalize(null), 'Normal');
     });
   });
 }

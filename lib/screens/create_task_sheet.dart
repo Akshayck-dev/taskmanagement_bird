@@ -23,7 +23,7 @@ class _CreateTaskBottomSheetState extends State<CreateTaskBottomSheet> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
   String? _selectedAssignee;
-  String _selectedPriority = 'Medium';
+  String _selectedPriority = 'Normal';
   String _selectedCategory = 'General';
   String _selectedRecurrence = 'none';
   DateTime _selectedDeadline = DateTime.now().copyWith(hour: 18, minute: 0); // Default to today 6 PM
