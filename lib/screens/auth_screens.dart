@@ -32,7 +32,19 @@ class _LoginScreenState extends State<LoginScreen> {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      body: SafeArea(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              primaryColor.withValues(alpha: isDark ? 0.16 : 0.08),
+              isDark ? const Color(0xFF0A0A0C) : Colors.white,
+            ],
+            stops: const [0.0, 0.55],
+          ),
+        ),
+        child: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(32.0),
           child: Column(
@@ -43,8 +55,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 height: 150,
                 width: 150,
                 decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(24),
+                  gradient: LinearGradient(
+                    colors: [kBrandGradient[0].withValues(alpha: 0.18), kBrandGradient[2].withValues(alpha: 0.10)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(36),
+                  boxShadow: [
+                    BoxShadow(color: kBrandGradient[0].withValues(alpha: 0.18), blurRadius: 24, offset: const Offset(0, 10)),
+                  ],
                 ),
                 child: Icon(Icons.checklist_rtl, size: 76, color: primaryColor),
               ),
@@ -114,6 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

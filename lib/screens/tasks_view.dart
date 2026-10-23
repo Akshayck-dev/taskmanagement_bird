@@ -118,7 +118,24 @@ class _TasksViewState extends State<TasksView> {
                         ),
                       ],
                     ),
-                    child: Column(
+                    child: Stack(
+                      children: [
+                        // Soft sheen for depth (pure decoration)
+                        Positioned(
+                          right: -50,
+                          top: -50,
+                          child: Container(
+                            width: 170,
+                            height: 170,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [Colors.white.withValues(alpha: 0.20), Colors.white.withValues(alpha: 0.0)],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
@@ -220,6 +237,8 @@ class _TasksViewState extends State<TasksView> {
                         ),
                       ],
                     ),
+                    ],
+                  ),
                   ),
                   const SizedBox(height: 14),
 
@@ -292,6 +311,12 @@ class _TasksViewState extends State<TasksView> {
         padding: const EdgeInsets.only(top: 14, bottom: 8),
         child: Row(
           children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(gradient: LinearGradient(colors: kBrandGradient), shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
             Text(
               label.toUpperCase(),
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.9, color: isDark ? Colors.white38 : Colors.black45),
@@ -338,7 +363,7 @@ class _TasksViewState extends State<TasksView> {
       currentUid: currentUid,
       onLocalDelete: () => setState(() => _dismissedIds.add(task.id)),
       onDeleteFailed: () => setState(() => _dismissedIds.remove(task.id)),
-      child: _buildCompactTaskCard(context, task, dbService, isDark, today),
+      child: PressableScale(child: _buildCompactTaskCard(context, task, dbService, isDark, today)),
     );
   }
 
@@ -356,13 +381,13 @@ class _TasksViewState extends State<TasksView> {
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF16161A) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
         ),
         boxShadow: [
           if (!isDark)
-            BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 12, offset: const Offset(0, 4)),
+            BoxShadow(color: const Color(0xFF6366F1).withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 5)),
         ],
       ),
       child: Column(
@@ -370,7 +395,10 @@ class _TasksViewState extends State<TasksView> {
         children: [
           Container(
             padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [color.withValues(alpha: 0.20), color.withValues(alpha: 0.08)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(9),
+            ),
             child: Icon(icon, size: 15, color: color),
           ),
           const SizedBox(height: 10),
@@ -420,16 +448,16 @@ class _TasksViewState extends State<TasksView> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF16161A) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05),
           ),
           boxShadow: [
             if (!isDark)
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.015),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: const Color(0xFF6366F1).withValues(alpha: 0.07),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
               )
           ],
         ),

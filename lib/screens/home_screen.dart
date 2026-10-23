@@ -138,31 +138,27 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center, // Center vertically
             children: [
-              Icon(
-                isSelected ? activeIcon : icon,
-                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey[500],
-                size: 24, // Slightly smaller icons for better balance
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isSelected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Icon(
+                  isSelected ? activeIcon : icon,
+                  color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey[500],
+                  size: 23,
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 11,
                   color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey[500],
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              AnimatedOpacity(
-                opacity: isSelected ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
                 ),
               ),
             ],

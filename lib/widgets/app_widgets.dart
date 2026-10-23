@@ -57,7 +57,7 @@ class _PrimaryButtonState extends State<PrimaryButton> with SingleTickerProvider
 
     final bgColor = isWhiteBtn
         ? (isDark ? const Color(0xFF1E1E24) : Colors.white)
-        : primaryColor;
+        : Colors.transparent;
     final strokeColor = isWhiteBtn
         ? (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08))
         : Colors.transparent;
@@ -80,15 +80,18 @@ class _PrimaryButtonState extends State<PrimaryButton> with SingleTickerProvider
           width: double.infinity,
           height: 54,
           decoration: BoxDecoration(
-            color: bgColor,
+            color: isWhiteBtn ? bgColor : null,
+            gradient: isWhiteBtn
+                ? null
+                : const LinearGradient(colors: kBrandGradient, begin: Alignment.centerLeft, end: Alignment.centerRight),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: strokeColor, width: 1),
             boxShadow: [
               if (!isWhiteBtn)
                 BoxShadow(
-                  color: primaryColor.withValues(alpha: 0.15),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
+                  color: const Color(0xFF6D5DF6).withValues(alpha: 0.35),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
                 )
               else if (!isDark)
                 BoxShadow(
@@ -558,7 +561,7 @@ Widget swipeableTaskCard({
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 20),
       alignment: Alignment.centerLeft,
-      decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(18)),
       child: Row(
         children: [
           Icon(task.isDone ? Icons.replay_rounded : Icons.check_circle_rounded, color: Colors.white, size: 20),
@@ -571,7 +574,7 @@ Widget swipeableTaskCard({
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 20),
       alignment: Alignment.centerRight,
-      decoration: BoxDecoration(color: Colors.red.shade500, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: Colors.red.shade500, borderRadius: BorderRadius.circular(18)),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -701,3 +704,34 @@ Widget taskOptionChip({
   );
 }
 
+
+
+/// Subtle press feedback: scales its child to 0.98 while a pointer is
+/// down. Uses a raw Listener so it never competes in the gesture
+/// arena with taps, scrolls or swipe-to-dismiss.
+class PressableScale extends StatefulWidget {
+  final Widget child;
+  const PressableScale({super.key, required this.child});
+
+  @override
+  State<PressableScale> createState() => _PressableScaleState();
+}
+
+class _PressableScaleState extends State<PressableScale> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (_) => setState(() => _down = true),
+      onPointerUp: (_) => setState(() => _down = false),
+      onPointerCancel: (_) => setState(() => _down = false),
+      child: AnimatedScale(
+        scale: _down ? 0.98 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}

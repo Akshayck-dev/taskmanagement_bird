@@ -168,7 +168,7 @@ class _MyTasksViewState extends State<MyTasksView> {
                               currentUid: user.uid,
                               onLocalDelete: () => setState(() => _dismissedIds.add(task.id)),
                               onDeleteFailed: () => setState(() => _dismissedIds.remove(task.id)),
-                              child: _buildCompactTaskCard(context, task, dbService, isDark),
+                              child: PressableScale(child: _buildCompactTaskCard(context, task, dbService, isDark)),
                             ),
                           );
                         },
@@ -230,16 +230,16 @@ class _MyTasksViewState extends State<MyTasksView> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF16161A) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05),
           ),
           boxShadow: [
             if (!isDark)
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                color: const Color(0xFF6366F1).withValues(alpha: 0.07),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
               )
           ],
         ),
